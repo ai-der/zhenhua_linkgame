@@ -45,7 +45,7 @@ DIRS = ((-1, 0), (1, 0), (0, -1), (0, 1))
 
 # ==================== 工具函数 ====================
 def load_font(size, bold=False):
-    """针对网页端优化：直接尝试加载本地 font.otf，防崩溃兜底"""
+    """针对网页端优化:直接尝试加载本地 font.otf，防崩溃兜底"""
     try:
         return pygame.font.Font("font.otf", size)
     except Exception:
@@ -185,7 +185,7 @@ class LinkGame:
 
         # 如果没有任何图片加载成功，用字母兜底防止崩溃
         if not self.tile_surfs:
-            print("警告：未加载到图片，使用备用方块。")
+            print("警告:未加载到图片，使用备用方块。")
             for i in range(8):
                 surf = pygame.Surface((TILE - 6, TILE - 6))
                 surf.fill(PALETTE[i % len(PALETTE)])
@@ -434,7 +434,7 @@ class LinkGame:
             title = "恭喜通关！" if self.state == "won" else "时间到，游戏结束"
             t = load_font(40, True).render(title, True, (110, 240, 180) if self.state == "won" else (255, 130, 130))
             self.screen.blit(t, t.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 40)))
-            s = self.f_mid.render(f"最终得分：{self.score}", True, TEXT)
+            s = self.f_mid.render(f"最终得分:{self.score}", True, TEXT)
             self.screen.blit(s, s.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 10)))
             r = self.f_small.render("点击任意位置重新开始", True, (180, 186, 205))
             self.screen.blit(r, r.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 50)))
