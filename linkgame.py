@@ -422,12 +422,23 @@ class LinkGame:
                 self.screen.blit(surf, surf.get_rect(center=(cx, cy)))
             elif e["type"] == "path":
                 pts = [cell_center(r, c) for r, c in e["path"]]
-                # 创建一个和整个窗口一样大的透明图层来画线，防止超出屏幕被截断
-                layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-                pygame.draw.lines(layer, (*ACCENT, int(255 * (1 - p))), False, pts, 4)
 
-                # 把图层盖到主屏幕上
-                self.screen.blit(layer, (0, 0))
+                # 如果连线为空，直接跳过
+                if len(pts) < 2:
+                    continue
+
+                alpha = int(255 * (1 - p))
+
+                # ✅ 核心修复：建一个比窗口四周各大 100 像素的超大透明图层
+                PAD = 100
+                layer = pygame.Surface((WIDTH + PAD * 2, HEIGHT + PAD * 2), pygame.SRCALPHA)
+
+                # 把连线的所有坐标都加上 PAD 偏移量，画在这个大图层上
+                offset_pts = [(q[0] + PAD, q[1] + PAD) for q in pts]
+                pygame.draw.lines(layer, (*ACCENT, alpha), False, offset_pts, 4)
+
+                # 把这个大图层再贴回屏幕上，通过负偏移量把位置对齐
+                self.screen.blit(layer, (-PAD, -PAD))
 
         # 绘制 HUD
         pygame.draw.rect(self.screen, (34, 39, 54), (0, 0, WIDTH, HUD_H))
