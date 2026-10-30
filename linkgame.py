@@ -127,16 +127,20 @@ class Button:
 class LinkGame:
     def __init__(self):
         print("▶️ [Debug] 进入 LinkGame.__init__ ...")
+
+        # ✅ 打印一下 pygame 到底是什么
+        print("▶️ [Debug] 当前 pygame 的路径:", getattr(pygame, "__file__", "未知"))
+
         try:
-            pygame.init()
-        except Exception as e:
-            print(f"⚠️ pygame.init 警告: {e}")
-            # 强行初始化显示模块
             pygame.display.init()
-        print("▶️ [Debug] pygame.init() 完成")
-        # 网页端必须是基础模式
+            pygame.font.init()
+            print("▶️ [Debug] 显示与字体模块初始化成功")
+        except Exception as e:
+            print(f"❌ [Debug] pygame 模块初始化失败: {e}")
+
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         print("▶️ [Debug] set_mode() 完成")
+
         self.clock = pygame.time.Clock()
 
         print("▶️ [Debug] 开始加载字体...")

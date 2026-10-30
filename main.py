@@ -1,7 +1,8 @@
 import asyncio
 import traceback
-from linkgame import LinkGame
 import pygame
+from linkgame import LinkGame
+
 async def main():
     try:
         print("🚀 [Debug] 开始执行 main() ...")
