@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import sys
-import sys
 import os
 import random
 import asyncio
@@ -12,18 +11,29 @@ try:
 except ImportError:
     print("❌ 找不到 pygame")
 # ==================== 全局配置 ====================
-ROWS, COLS = 8, 10
-TILE = 64
-MARGIN = 40
-HUD_H = 100  # 增高信息栏以容纳按钮
+# 判断当前是否是网页/手机端
+IS_MOBILE = (sys.platform == "emscripten")
 
+if IS_MOBILE:
+    # 手机端:减少行列数，放大方块尺寸，让手指更容易点击
+    ROWS, COLS = 6, 6      # 手机用 6x6 棋盘
+    TILE = 80              # 方块调大
+    MARGIN = 20
+    HUD_H = 120
+else:
+    # 电脑端:保持原来的配置
+    ROWS, COLS = 8, 10     # 棋盘行数、列数
+    TILE = 64              # ★ 方块基准尺寸:改这一个数就能整体放大/缩小、推荐:64（紧凑）/ 80（舒适）/ 96（大屏）/ 120（超大）
+    MARGIN = 40
+    HUD_H = 100
+
+# 重新计算画布大小
 BOARD_W = COLS * TILE
 BOARD_H = ROWS * TILE
 WIDTH = BOARD_W + MARGIN * 2
 HEIGHT = BOARD_H + MARGIN * 2 + HUD_H
 BOARD_X = MARGIN
 BOARD_Y = HUD_H + MARGIN
-
 FPS = 60
 TOTAL_TIME = 240.0
 
@@ -150,21 +160,26 @@ class LinkGame:
         self.f_btn = load_font(16, bold=True)
         print("▶️ [Debug] 字体加载完成")
 
-        print("▶️ [Debug] 开始加载图片...")
-        # 动态加载 assets 文件夹中的图片（Pygbag 会自动打包 assets 文件夹）
+        # ================= 加载图片 =================
+        print("▶️ [Debug] 开始加载 assets 图片...")
         self.tile_surfs = []
         assets_dir = "assets"
 
         try:
-            # 读取并排序，过滤出图片文件
+            # 动态扫描所有支持的图片格式，不管里面有几张图
             files = sorted([
                 f for f in os.listdir(assets_dir)
                 if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))
             ])
-            print(f"▶️ [Debug] 找到图片文件: {files}")
+            print(f"✅ [Debug] 成功识别到 {len(files)} 张图片")
         except Exception as e:
-            print(f"无法读取 assets 目录: {e}")
+            print(f"❌ [Debug] 读取 assets 失败: {e}")
             files = []
+
+        # 在循环开始前定义参数（你可以在这里随意修改数字）定义图片大小
+        # 按 TILE 尺寸动态计算留白和圆角
+        pad = int(TILE * 0.05)  # 留白占方块总宽度的 5%
+        rad = int(TILE * 0.2)  # 圆角占方块总宽度的 20%
 
         for name in files:
             path = os.path.join(assets_dir, name)
@@ -173,29 +188,33 @@ class LinkGame:
                 s = TILE - 6
                 surf = pygame.Surface((s, s), pygame.SRCALPHA)
 
-                # 根据文件名生成一个固定的颜色底板
                 color_idx = sum(ord(c) for c in name) % len(PALETTE)
-                pygame.draw.rect(surf, PALETTE[color_idx], (0, 0, s, s), border_radius=12)
+                # ✅ 修改 1:调整圆角 (rad)
+                pygame.draw.rect(surf, PALETTE[color_idx], (0, 0, s, s), border_radius=rad)
 
-                img_scaled = pygame.transform.smoothscale(img, (s - 8, s - 8))
-                surf.blit(img_scaled, (4, 4))
+                # ✅ 修改 2:调整留白 (pad)
+                img_scaled = pygame.transform.smoothscale(img, (s - pad, s - pad))
+
+                # 将缩放后的图片居中放置
+                surf.blit(img_scaled, (pad // 2, pad // 2))
                 self.tile_surfs.append(surf)
             except Exception as e:
-                print(f"图片加载失败 {path}: {e}")
+                print(f"❌ 图片加载失败 {path}: {e}")
 
-        # 如果没有任何图片加载成功，用字母兜底防止崩溃
-        if not self.tile_surfs:
-            print("警告:未加载到图片，使用备用方块。")
+        # 兜底:如果图太少，用颜色方块补齐
+        if len(self.tile_surfs) < 2:
+            print("⚠️ 警告:有效图片少于 2 种，使用默认彩色方块兜底！")
             for i in range(8):
                 surf = pygame.Surface((TILE - 6, TILE - 6))
                 surf.fill(PALETTE[i % len(PALETTE)])
-                txt = self.f_tile.render(LETTERS[i % len(LETTERS)], True, (0, 0, 0))
-                surf.blit(txt, txt.get_rect(center=((TILE - 6) // 2, (TILE - 6) // 2)))
                 self.tile_surfs.append(surf)
 
-        # 确保种类数（kinds）与图片数量一致
+        # 自动计算种类数量
         self.num_kinds = len(self.tile_surfs)
-        print("▶️ [Debug] 图片加载完成")
+        print(f"✅ [Debug] 最终加载图案种类: {self.num_kinds}")
+        # ================= 图片加载结束 =================
+
+
         # 按钮初始化
         bw, bh, gap = 90, 36, 15
         start_x = (WIDTH - (bw * 3 + gap * 2)) // 2
