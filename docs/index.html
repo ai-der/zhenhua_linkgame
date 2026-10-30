@@ -234,6 +234,10 @@ function show_infobox() {
             bottom: 0;
             left: 0;
             right: 0;
+
+            /* 强制浏览器用锐利像素渲染，拒绝模糊 */
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
         }
 
         body {

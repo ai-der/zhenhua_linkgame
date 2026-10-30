@@ -12,9 +12,9 @@ except ImportError:
     print("❌ 找不到 pygame")
 # ==================== 全局配置 ====================
 ROWS, COLS = 6, 8     # 棋盘行数、列数
-TILE = 64              # ★ 方块基准尺寸:改这一个数就能整体放大/缩小、推荐:64（紧凑）/ 80（舒适）/ 96（大屏）/ 120（超大）
+TILE = 96            # ★ 方块基准尺寸:改这一个数就能整体放大/缩小、推荐:64（紧凑）/ 80（舒适）/ 96（大屏）/ 120（超大）
 MARGIN = 40
-HUD_H = 100
+HUD_H = 120
 
 # 重新计算画布大小
 BOARD_W = COLS * TILE
@@ -143,7 +143,7 @@ class LinkGame:
         self.clock = pygame.time.Clock()
 
         print("▶️ [Debug] 开始加载字体...")
-        self.f_mid = load_font(22, bold=True)
+        self.f_mid = load_font(28, bold=True)
         self.f_small = load_font(17)
         self.f_tile = load_font(36, bold=True)
         self.f_btn = load_font(16, bold=True)
@@ -173,30 +173,24 @@ class LinkGame:
         for name in files:
             path = os.path.join(assets_dir, name)
             try:
+                # 1. 加载原图
                 img = pygame.image.load(path).convert_alpha()
-                s = TILE - 6
+                s = TILE - 4  # 尽量占满，留2px缝隙
+
+                # 2. 将原图直接缩放铺满整个方块
+                img_scaled = pygame.transform.smoothscale(img, (s, s))
+
+                # 3. 创建一个透明的圆角遮罩
                 surf = pygame.Surface((s, s), pygame.SRCALPHA)
+                surf.blit(img_scaled, (0, 0))
 
-                # 1. 画背景颜色
-                color_idx = sum(ord(c) for c in name) % len(PALETTE)
-                pygame.draw.rect(surf, PALETTE[color_idx], (0, 0, s, s), border_radius=12)
-
-                # 2. 缩放图片并加上圆角遮罩（关键修复）
-                img_scaled = pygame.transform.smoothscale(img, (s - 8, s - 8))
-
-                # 创建一个和方块一样大的透明层
-                layer = pygame.Surface((s, s), pygame.SRCALPHA)
-                layer.blit(img_scaled, (4, 4))  # 先贴图
-
-                # 创建一个圆角遮罩
+                # 4. 画一个圆角矩形作为遮罩，把多出去的四角全部透明化
                 mask = pygame.Surface((s, s), pygame.SRCALPHA)
                 pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, s, s), border_radius=12)
 
-                # 把遮罩盖在图片层上（只保留圆角内部的部分）
-                layer.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                # 5. 将遮罩应用到图片上（这会完美裁掉四角）
+                surf.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
 
-                # 把裁剪好的图片盖到底板上
-                surf.blit(layer, (0, 0))
                 self.tile_surfs.append(surf)
             except Exception as e:
                 print(f"❌ 图片加载失败 {path}: {e}")
