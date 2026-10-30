@@ -298,6 +298,13 @@ class LinkGame:
 
     # ==================== 核心交互逻辑 ====================
     def _handle_click(self, pos):
+        import time
+        current_time = time.time()
+        # ✅ 防抖:如果距离上一次点击不到 0.2 秒，直接忽略
+        if hasattr(self, '_last_click_time') and current_time - self._last_click_time < 0.2:
+            return
+        self._last_click_time = current_time
+
         """统一处理鼠标/触摸点击"""
         if self.state != "playing":
             self.new_game()
@@ -452,13 +459,9 @@ class LinkGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                    # ✅ 只需要这一个，Pygbag 会自动把手机触摸转成鼠标点击
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     self._handle_click(event.pos)
-                elif event.type == pygame.FINGERDOWN:
-                    # 手机触摸适配
-                    x = int(event.x * WIDTH)
-                    y = int(event.y * HEIGHT)
-                    self._handle_click((x, y))
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         running = False
