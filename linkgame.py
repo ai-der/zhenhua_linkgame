@@ -56,6 +56,17 @@ def cell_topleft(r, c):
 
 
 def cell_center(r, c):
+    # 如果是外圈（上、下、左、右），把坐标限制在棋盘边框外一点点，防止超出屏幕被截断
+    if r == 0:
+        return (BOARD_X + (c - 1) * TILE + TILE // 2, BOARD_Y - 15)
+    elif r == ROWS + 1:
+        return (BOARD_X + (c - 1) * TILE + TILE // 2, BOARD_Y + BOARD_H + 15)
+    elif c == 0:
+        return (BOARD_X - 15, BOARD_Y + (r - 1) * TILE + TILE // 2)
+    elif c == COLS + 1:
+        return (BOARD_X + BOARD_W + 15, BOARD_Y + (r - 1) * TILE + TILE // 2)
+
+    # 如果是棋盘内部的格子，正常计算中心点
     return (BOARD_X + (c - 1) * TILE + TILE // 2, BOARD_Y + (r - 1) * TILE + TILE // 2)
 
 
