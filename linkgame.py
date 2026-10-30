@@ -11,21 +11,10 @@ try:
 except ImportError:
     print("❌ 找不到 pygame")
 # ==================== 全局配置 ====================
-# 判断当前是否是网页/手机端
-IS_MOBILE = (sys.platform == "emscripten")
-
-if IS_MOBILE:
-    # 手机端:减少行列数，放大方块尺寸，让手指更容易点击
-    ROWS, COLS = 6, 6      # 手机用 6x6 棋盘
-    TILE = 80              # 方块调大
-    MARGIN = 20
-    HUD_H = 120
-else:
-    # 电脑端:保持原来的配置
-    ROWS, COLS = 8, 10     # 棋盘行数、列数
-    TILE = 64              # ★ 方块基准尺寸:改这一个数就能整体放大/缩小、推荐:64（紧凑）/ 80（舒适）/ 96（大屏）/ 120（超大）
-    MARGIN = 40
-    HUD_H = 100
+ROWS, COLS = 6, 8     # 棋盘行数、列数
+TILE = 64              # ★ 方块基准尺寸:改这一个数就能整体放大/缩小、推荐:64（紧凑）/ 80（舒适）/ 96（大屏）/ 120（超大）
+MARGIN = 40
+HUD_H = 100
 
 # 重新计算画布大小
 BOARD_W = COLS * TILE
@@ -188,15 +177,26 @@ class LinkGame:
                 s = TILE - 6
                 surf = pygame.Surface((s, s), pygame.SRCALPHA)
 
+                # 1. 画背景颜色
                 color_idx = sum(ord(c) for c in name) % len(PALETTE)
-                # ✅ 修改 1:调整圆角 (rad)
-                pygame.draw.rect(surf, PALETTE[color_idx], (0, 0, s, s), border_radius=rad)
+                pygame.draw.rect(surf, PALETTE[color_idx], (0, 0, s, s), border_radius=12)
 
-                # ✅ 修改 2:调整留白 (pad)
-                img_scaled = pygame.transform.smoothscale(img, (s - pad, s - pad))
+                # 2. 缩放图片并加上圆角遮罩（关键修复）
+                img_scaled = pygame.transform.smoothscale(img, (s - 8, s - 8))
 
-                # 将缩放后的图片居中放置
-                surf.blit(img_scaled, (pad // 2, pad // 2))
+                # 创建一个和方块一样大的透明层
+                layer = pygame.Surface((s, s), pygame.SRCALPHA)
+                layer.blit(img_scaled, (4, 4))  # 先贴图
+
+                # 创建一个圆角遮罩
+                mask = pygame.Surface((s, s), pygame.SRCALPHA)
+                pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, s, s), border_radius=12)
+
+                # 把遮罩盖在图片层上（只保留圆角内部的部分）
+                layer.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
+                # 把裁剪好的图片盖到底板上
+                surf.blit(layer, (0, 0))
                 self.tile_surfs.append(surf)
             except Exception as e:
                 print(f"❌ 图片加载失败 {path}: {e}")
@@ -428,11 +428,12 @@ class LinkGame:
                 self.screen.blit(surf, surf.get_rect(center=(cx, cy)))
             elif e["type"] == "path":
                 pts = [cell_center(r, c) for r, c in e["path"]]
-                xs, ys = [q[0] for q in pts], [q[1] for q in pts]
-                x0, y0 = min(xs) - 8, min(ys) - 8
-                layer = pygame.Surface((max(xs) - x0 + 16, max(ys) - y0 + 16), pygame.SRCALPHA)
-                pygame.draw.lines(layer, (*ACCENT, int(255 * (1 - p))), False, [(q[0] - x0, q[1] - y0) for q in pts], 4)
-                self.screen.blit(layer, (x0, y0))
+                # 创建一个和整个窗口一样大的透明图层来画线，防止超出屏幕被截断
+                layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                pygame.draw.lines(layer, (*ACCENT, int(255 * (1 - p))), False, pts, 4)
+
+                # 把图层盖到主屏幕上
+                self.screen.blit(layer, (0, 0))
 
         # 绘制 HUD
         pygame.draw.rect(self.screen, (34, 39, 54), (0, 0, WIDTH, HUD_H))
