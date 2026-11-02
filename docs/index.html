@@ -5,15 +5,17 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>振华连连看</title>
-    <style>
+        <style>
         html, body {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; background-color: #1a1e2a;
-            display: flex; justify-content: center; align-items: center;
+            /* 去掉 flex 居中，让画布直接撑满 */
         }
         canvas {
-            max-width: 100vw;
-            max-height: 100vh;
+            width: 100vw !important;
+            height: 100vh !important;
+            /* contain 保证比例不失调，因为画布比例已和屏幕一致，所以完全没有黑边 */
+            object-fit: contain;
             image-rendering: -webkit-optimize-contrast;
             image-rendering: crisp-edges;
             touch-action: none;
