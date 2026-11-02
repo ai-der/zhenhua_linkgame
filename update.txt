@@ -91,7 +91,7 @@ async def custom_site():
     __import__(__name__).__file__ = main
     await shell.source(main)
     platform.window.infobox.style.display = "none"
-    platform.window.config.gui_divider = 1
+    # platform.window.config.gui_divider = 1
     platform.window.window_resize()
     shell.interactive()
 

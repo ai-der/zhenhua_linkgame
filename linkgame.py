@@ -7,7 +7,7 @@ from collections import deque
 import pygame
 
 # ==================== 全局配置 ====================
-# 难度字典： (行数, 列数, 方块大小, 时间限制)
+# 难度字典: (行数, 列数, 方块大小, 时间限制)
 DIFFICULTIES = {
     "easy": (6, 6, 110, 300),
     "normal": (8, 8, 90, 240),
@@ -109,6 +109,9 @@ class LinkGame:
         pygame.init()
         self.clock = pygame.time.Clock()
 
+        # 给 Pygame 一个初始 Surface，防止 convert_alpha 报错
+        pygame.display.set_mode((1, 1))
+
         self.current_diff = "normal"
         self.tile_surfs = []
         self.load_images()
@@ -185,12 +188,12 @@ class LinkGame:
         bh = 36
         start_x = self.board_x
 
-        # 第一排：难度选择
+        # 第一排:难度选择
         self.buttons[0].update_rect(start_x, 15, bw, bh)
         self.buttons[1].update_rect(start_x + bw + 15, 15, bw, bh)
         self.buttons[2].update_rect(start_x + (bw + 15) * 2, 15, bw, bh)
 
-        # 第二排：操作
+        # 第二排:操作
         self.buttons[3].update_rect(start_x, 60, bw, bh)
         self.buttons[4].update_rect(start_x + bw + 15, 60, bw, bh)
         self.buttons[5].update_rect(start_x + (bw + 15) * 2, 60, bw, bh)
@@ -439,7 +442,7 @@ class LinkGame:
             title = "恭喜通关！" if self.state == "won" else "时间到，游戏结束"
             t = load_font(40, True).render(title, True, (110, 240, 180) if self.state == "won" else (255, 130, 130))
             self.screen.blit(t, t.get_rect(center=(self.width // 2, self.height // 2 - 40)))
-            s = self.f_mid.render(f"最终得分：{self.score}", True, TEXT)
+            s = self.f_mid.render(f"最终得分:{self.score}", True, TEXT)
             self.screen.blit(s, s.get_rect(center=(self.width // 2, self.height // 2 + 10)))
             r = self.f_small.render("点击任意位置重新开始", True, (180, 186, 205))
             self.screen.blit(r, r.get_rect(center=(self.width // 2, self.height // 2 + 50)))
