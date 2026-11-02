@@ -1,5 +1,5 @@
 # ==========================================
-# 连连看 (Zhenhua LinkGame) 一键打包上传脚本
+# 连连看 (Zhenhua LinkGame) 一键打包上传脚本 (完美版)
 # ==========================================
 
 Write-Host "1. 正在清理旧文件..." -ForegroundColor Cyan
@@ -13,7 +13,7 @@ python -m pygbag --build --ume_block 0 main.py 2>$null
 Write-Host "3. 正在组装 docs 目录..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Path docs | Out-Null
 
-# 只复制核心游戏包，避免复制损坏的 index.html
+# 复制核心游戏包
 if (Test-Path build\web\zhenhua_linkgame.tar.gz) {
     Copy-Item build\web\zhenhua_linkgame.tar.gz -Destination docs\ -Force
     Copy-Item build\web\zhenhua_linkgame.apk -Destination docs\ -Force
@@ -22,39 +22,41 @@ if (Test-Path build\web\zhenhua_linkgame.tar.gz) {
     exit
 }
 
-# 处理 browserfs 文件
-$bfs_path = "browserfs.min.js"
-if (-not (Test-Path $bfs_path)) {
-    # 如果根目录没有，尝试从旧版 docs 或 build/web 找
-    if (Test-Path build\web\browserfs.min.js) { $bfs_path = "build\web\browserfs.min.js" }
-    elseif (Test-Path ..\docs\browserfs.min.js) { $bfs_path = "..\docs\browserfs.min.js" }
-}
-if (Test-Path $bfs_path) {
-    Copy-Item $bfs_path -Destination docs\browserfs.min.js -Force
-    Write-Host "✅ 已放入 browserfs.min.js" -ForegroundColor Green
+# 强行去旧项目里拿 browserfs.min.js
+$old_bfs_path = "F:\py_project\pythonProject\lianliankan\docs\browserfs.min.js"
+if (Test-Path $old_bfs_path) {
+    Copy-Item $old_bfs_path -Destination docs\browserfs.min.js -Force
+    Write-Host "✅ 成功从旧项目复制 browserfs.min.js" -ForegroundColor Green
 } else {
-    Write-Host "⚠️ 警告：没找到 browserfs.min.js，请确保它存在！" -ForegroundColor Yellow
+    Write-Host "⚠️ 警告：在旧项目目录也没找到 browserfs.min.js！请检查路径！" -ForegroundColor Yellow
 }
 
-# 写入终极自适应 index.html (带防模糊和触摸修复)
+# 写入终极自适应 index.html
 $html_content = @"
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
+    <!-- 禁止用户缩放，保持标准视口 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>振华连连看</title>
     <style>
         html, body {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; background-color: #1a1e2a;
+            display: flex; justify-content: center; align-items: center;
         }
+        /* 不再强制拉伸画布，让 Pygbag 自动等比缩放，保证触摸坐标正确 */
         canvas {
-            width: 100vw !important;
-            height: 100vh !important;
-            object-fit: contain;
+            max-width: 100vw;
+            max-height: 100vh;
             image-rendering: -webkit-optimize-contrast;
             image-rendering: crisp-edges;
+            touch-action: none; /* 禁止浏览器默认手势，保证触摸精准 */
+        }
+        /* 彻底隐藏各种黑框 */
+        #pyconsole, #terminal, #status, #progress, #infobox, #transfer, #system {
+            display: none !important;
         }
     </style>
     <script src="browserfs.min.js"></script>
@@ -91,7 +93,6 @@ async def custom_site():
     __import__(__name__).__file__ = main
     await shell.source(main)
     platform.window.infobox.style.display = "none"
-    # platform.window.config.gui_divider = 1
     platform.window.window_resize()
     shell.interactive()
 
@@ -107,7 +108,6 @@ Set-Content -Path docs\index.html -Value $html_content -Encoding UTF8
 New-Item -ItemType File -Path docs\.nojekyll | Out-Null
 
 Write-Host "4. 正在推送到 GitHub..." -ForegroundColor Cyan
-# 确保不被大文件卡住，直接强行推送
 git add .
 git commit -m "Auto-deploy: 更新游戏代码与资源"
 git push -f origin main
