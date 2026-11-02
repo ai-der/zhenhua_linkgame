@@ -98,7 +98,11 @@ class Button:
 
 class LinkGame:
     def __init__(self):
-        pygame.init()
+        # pygame.init()
+        # 避开音频死锁
+        pygame.display.init()
+        pygame.font.init()
+
         self.clock = pygame.time.Clock()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
@@ -471,7 +475,7 @@ class LinkGame:
             title = "恭喜通关！" if self.state == "won" else "时间到，游戏结束"
             t = load_font(50, True).render(title, True, (110, 240, 180) if self.state == "won" else (255, 130, 130))
             self.screen.blit(t, t.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 50)))
-            s = load_font(30, True).render(f"最终得分：{self.score}", True, TEXT)
+            s = load_font(30, True).render(f"最终得分:{self.score}", True, TEXT)
             self.screen.blit(s, s.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20)))
 
     async def run(self):
