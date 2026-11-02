@@ -1,5 +1,5 @@
 # ==========================================
-# 连连看一键打包上传脚本 (无视网络报错终极版)
+# 连连看一键打包上传脚本 (100% 本地化无敌版)
 # ==========================================
 
 Write-Host "1. 正在清理旧文件..." -ForegroundColor Cyan
@@ -7,8 +7,6 @@ Remove-Item -Recurse -Force build, docs -ErrorAction SilentlyContinue
 
 Write-Host "2. 正在使用 Pygbag 打包..." -ForegroundColor Cyan
 $env:PYTHONUTF8="1"
-
-# 使用 Start-Job 限制打包时间，只要 15 秒，防止它卡 502 死循环
 $job = Start-Job -ScriptBlock {
     $env:PYTHONUTF8="1"
     Set-Location $using:PWD
@@ -25,7 +23,7 @@ if (Test-Path build\web\zhenhua_linkgame.tar.gz) {
     Copy-Item build\web\zhenhua_linkgame.tar.gz -Destination docs\ -Force
     Write-Host "✅ 核心包已提取" -ForegroundColor Green
 } else {
-    Write-Host "❌ 打包失败：找不到 .tar.gz 文件！请检查代码是否有语法错误。" -ForegroundColor Red
+    Write-Host "❌ 打包失败：找不到 .tar.gz 文件！" -ForegroundColor Red
     exit
 }
 
@@ -34,11 +32,20 @@ $old_bfs_path = "F:\py_project\pythonProject\lianliankan\docs\browserfs.min.js"
 if (Test-Path $old_bfs_path) {
     Copy-Item $old_bfs_path -Destination docs\browserfs.min.js -Force
     Write-Host "✅ 成功从旧项目复制 browserfs.min.js" -ForegroundColor Green
-} else {
-    Write-Host "⚠️ 警告：在旧项目目录没找到 browserfs.min.js！" -ForegroundColor Yellow
 }
 
-# 写入终极自适应 index.html (带全屏、防模糊、隐藏黑框)
+# 🌟 核心修复：从本地 Python 库提取 Pygbag 官方运行库，彻底断开外网 CDN！
+Write-Host "4. 正在提取本地 Pygbag 运行库..." -ForegroundColor Cyan
+$pygbag_cdn = python -c "import pygbag, os; print(os.path.join(os.path.dirname(pygbag.__file__), 'cdn'))"
+if (Test-Path $pygbag_cdn) {
+    # 把 pythons.js 和 cpython312 等所有底层文件复制到 docs
+    Copy-Item -Path "$pygbag_cdn\*" -Destination docs -Recurse -Force
+    Write-Host "✅ 本地运行库提取成功！完全脱离外网 CDN" -ForegroundColor Green
+} else {
+    Write-Host "⚠️ 未找到本地 Pygbag CDN 目录，网页可能依赖外网！" -ForegroundColor Yellow
+}
+
+# 写入终极自适应 index.html (指向本地 pythons.js)
 $html_content = @"
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -67,7 +74,8 @@ $html_content = @"
     <script src="browserfs.min.js"></script>
 </head>
 <body>
-    <script src="https://pygame-web.github.io/cdn/0.9.3/pythons.js" type="module" id="site" data-os="vtx,gui" async defer>
+    <!-- 注意这里：把原来的外网链接改成了本地 pythons.js -->
+    <script src="pythons.js" type="module" id="site" data-os="vtx,gui" async defer>
 #<!--
 import asyncio
 import platform
@@ -112,9 +120,9 @@ asyncio.run(custom_site())
 Set-Content -Path docs\index.html -Value $html_content -Encoding UTF8
 New-Item -ItemType File -Path docs\.nojekyll | Out-Null
 
-Write-Host "4. 正在推送到 GitHub..." -ForegroundColor Cyan
+Write-Host "5. 正在推送到 GitHub..." -ForegroundColor Cyan
 git add .
-git commit -m "Auto-deploy: 最终布局与自适应"
+git commit -m "Auto-deploy: 彻底本地化运行库，摆脱 CDN 依赖"
 git push -f origin main
 
 Write-Host "🎉 全部完成！请等待 1 分钟后刷新网页查看最新版本。" -ForegroundColor Magenta
