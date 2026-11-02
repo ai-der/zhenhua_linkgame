@@ -98,15 +98,11 @@ class Button:
 
 class LinkGame:
     def __init__(self):
-        # pygame.init()
-        # 避开音频死锁
-        pygame.display.init()
-        pygame.font.init()
-
+        pygame.init()
         self.clock = pygame.time.Clock()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
-        # 加载背景图 (支持 bg.jpg 或 bg.png)
+        # 加载背景图并调暗 (消除过亮感)
         self.bg_surf = None
         for ext in ['.jpg', '.png', '.jpeg']:
             bg_path = f"assets/bg{ext}"
@@ -114,6 +110,10 @@ class LinkGame:
                 try:
                     img = pygame.image.load(bg_path).convert()
                     self.bg_surf = pygame.transform.smoothscale(img, (WIDTH, HEIGHT))
+                    # 给背景图加一层半透明的黑色，降低亮度
+                    dark_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                    dark_overlay.fill((0, 0, 0, 120))  # 120 是透明度，越大越暗
+                    self.bg_surf.blit(dark_overlay, (0, 0))
                     break
                 except Exception:
                     pass
@@ -121,12 +121,7 @@ class LinkGame:
         self.tile_surfs = []
         self.load_images()
 
-        self.menu_buttons = [
-            Button("简单模式 (6x6)", "easy", BTN_COLORS[0]),
-            Button("普通模式 (8x8)", "normal", BTN_COLORS[1]),
-            Button("困难模式 (10x10)", "hard", BTN_COLORS[2]),
-        ]
-
+        # 游戏内操作按钮
         self.buttons = [
             Button("重排", "reshuffle", BTN_COLORS[0]),
             Button("提示", "hint", BTN_COLORS[1]),
@@ -134,19 +129,29 @@ class LinkGame:
             Button("返回菜单", "menu", BTN_COLORS[3]),
         ]
 
-        # --- 重新优化主菜单排版 ---
-        mw, mh = 360, 75
-        cx = WIDTH // 2
-        cy = HEIGHT // 2 + 50
-
-        # 三个按钮垂直间距 100 像素
-        self.menu_buttons[0].update_rect(cx - mw // 2, cy - 100, mw, mh)
-        self.menu_buttons[1].update_rect(cx - mw // 2, cy, mw, mh)
-        self.menu_buttons[2].update_rect(cx - mw // 2, cy + 100, mw, mh)
+        # 结算界面专属按钮
+        self.over_buttons = [
+            Button("再来一局", "restart", BTN_COLORS[2]),
+            Button("返回主菜单", "menu", BTN_COLORS[3]),
+        ]
 
         self.state = "menu"
         self.current_diff = "normal"
         self._last_click = 0
+
+        # 初始化菜单排版
+        mw, mh = 360, 75
+        cx = WIDTH // 2
+        cy = HEIGHT // 2 + 50
+
+        self.menu_buttons = [
+            Button("简单模式 (6x6)", "easy", BTN_COLORS[0]),
+            Button("普通模式 (8x8)", "normal", BTN_COLORS[1]),
+            Button("困难模式 (10x10)", "hard", BTN_COLORS[2]),
+        ]
+        self.menu_buttons[0].update_rect(cx - mw // 2, cy - 100, mw, mh)
+        self.menu_buttons[1].update_rect(cx - mw // 2, cy, mw, mh)
+        self.menu_buttons[2].update_rect(cx - mw // 2, cy + 100, mw, mh)
 
     def load_images(self):
         self.tile_surfs = []
@@ -202,6 +207,10 @@ class LinkGame:
         self.buttons[1].update_rect(start_x + bw + gap, y_pos, bw, bh)
         self.buttons[2].update_rect(start_x + (bw + gap) * 2, y_pos, bw, bh)
         self.buttons[3].update_rect(start_x + (bw + gap) * 3, y_pos, bw, bh)
+
+        # 结算按钮布局
+        self.over_buttons[0].update_rect(WIDTH // 2 - 220, HEIGHT // 2 + 30, 180, 50)
+        self.over_buttons[1].update_rect(WIDTH // 2 + 40, HEIGHT // 2 + 30, 180, 50)
 
         self.new_game()
 
@@ -314,6 +323,18 @@ class LinkGame:
                     return
             return
 
+        # 游戏结束时的结算界面按钮点击
+        if self.state in ["won", "lost"]:
+            for btn in self.over_buttons:
+                if btn.rect.collidepoint(pos):
+                    if btn.action == "restart":
+                        self.new_game()
+                    elif btn.action == "menu":
+                        self.state = "menu"
+                    return
+            return
+
+        # 正常游戏中的操作
         for btn in self.buttons:
             if btn.enabled and btn.rect.collidepoint(pos):
                 if btn.action == "menu":
@@ -373,16 +394,14 @@ class LinkGame:
                 self.state = "lost"
 
     def draw(self):
-        # --- 绘制背景 ---
+        # --- 绘制背景 (带透明度遮罩) ---
         if self.bg_surf:
             self.screen.blit(self.bg_surf, (0, 0))
         else:
             self.screen.fill(BG)
 
         if self.state == "menu":
-            # --- 主菜单界面绘制 ---
             title = load_font(80, True).render("振华连连看", True, ACCENT)
-            # 将标题放到按钮上方，拉开间距
             self.screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 180)))
 
             sub = load_font(30).render("请选择难度开始游戏", True, TEXT)
@@ -395,6 +414,7 @@ class LinkGame:
             return
 
         # --- 游戏界面 ---
+        # 绘制棋盘底板
         pygame.draw.rect(self.screen, PANEL,
                          (self.board_x - 10, self.board_y - 10, self.board_w + 20, self.board_h + 20), border_radius=20)
         for r in range(1, self.rows + 1):
@@ -440,12 +460,11 @@ class LinkGame:
                 pts = [self.cell_center(r, c) for r, c in e["path"]]
                 if len(pts) >= 2: pygame.draw.lines(self.screen, (*ACCENT, int(255 * (1 - p))), False, pts, 4)
 
-        # --- 游戏 HUD 绘制 (半透明遮罩) ---
+        # --- 游戏 HUD 绘制 ---
         hud_surf = pygame.Surface((WIDTH, HUD_H), pygame.SRCALPHA)
-        hud_surf.fill((34, 39, 54, 220))  # 220 是透明度，避免完全遮挡背景图
+        hud_surf.fill((34, 39, 54, 220))
         self.screen.blit(hud_surf, (0, 0))
 
-        # 第一行
         title_font = load_font(28, bold=True)
         title_text = title_font.render(f"振华连连看 - {self.diff_name}模式", True, ACCENT)
         self.screen.blit(title_text, (20, 15))
@@ -456,7 +475,6 @@ class LinkGame:
         right_text = self.f_mid.render(f"剩余 {self.remaining()}  |  时间 {int(self.time_left):03d}s", True, tcol)
         self.screen.blit(right_text, right_text.get_rect(topright=(WIDTH - 20, 15)))
 
-        # 第二行按钮
         mouse_pos = pygame.mouse.get_pos()
         for btn in self.buttons:
             btn.draw(self.screen, self.f_btn, mouse_pos)
@@ -468,15 +486,29 @@ class LinkGame:
             box.blit(surf, surf.get_rect(center=box.get_rect().center))
             self.screen.blit(box, box.get_rect(center=(WIDTH // 2, self.board_y + self.board_h // 2)))
 
+        # --- 结算界面 ---
         if self.state != "playing":
             veil = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            veil.fill((10, 12, 20, 180))
+            veil.fill((10, 12, 20, 200))  # 加深遮罩，让结算文字更清晰
             self.screen.blit(veil, (0, 0))
+
+            # 结算弹窗底板
+            box_w, box_h = 600, 300
+            box_x, box_y = WIDTH // 2 - box_w // 2, HEIGHT // 2 - box_h // 2
+            pygame.draw.rect(self.screen, (34, 39, 54), (box_x, box_y, box_w, box_h), border_radius=20)
+            pygame.draw.rect(self.screen, ACCENT, (box_x, box_y, box_w, box_h), 3, border_radius=20)
+
             title = "恭喜通关！" if self.state == "won" else "时间到，游戏结束"
             t = load_font(50, True).render(title, True, (110, 240, 180) if self.state == "won" else (255, 130, 130))
-            self.screen.blit(t, t.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 50)))
-            s = load_font(30, True).render(f"最终得分:{self.score}", True, TEXT)
-            self.screen.blit(s, s.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20)))
+            self.screen.blit(t, t.get_rect(center=(WIDTH // 2, box_y + 80)))
+
+            s = load_font(30, True).render(f"最终得分：{self.score}", True, TEXT)
+            self.screen.blit(s, s.get_rect(center=(WIDTH // 2, box_y + 150)))
+
+            # 画结算按钮
+            btn_font = load_font(26, True)
+            for btn in self.over_buttons:
+                btn.draw(self.screen, btn_font, mouse_pos)
 
     async def run(self):
         running = True
