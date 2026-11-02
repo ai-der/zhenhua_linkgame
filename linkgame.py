@@ -15,7 +15,7 @@ DIFFICULTIES = {
 
 WIDTH = 1100
 HEIGHT = 900
-HUD_H = 120  # 加高 HUD 以容纳两行
+HUD_H = 120
 
 MARGIN = 40
 FPS = 60
@@ -102,6 +102,18 @@ class LinkGame:
         self.clock = pygame.time.Clock()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
+        # 加载背景图 (支持 bg.jpg 或 bg.png)
+        self.bg_surf = None
+        for ext in ['.jpg', '.png', '.jpeg']:
+            bg_path = f"assets/bg{ext}"
+            if os.path.exists(bg_path):
+                try:
+                    img = pygame.image.load(bg_path).convert()
+                    self.bg_surf = pygame.transform.smoothscale(img, (WIDTH, HEIGHT))
+                    break
+                except Exception:
+                    pass
+
         self.tile_surfs = []
         self.load_images()
 
@@ -118,11 +130,15 @@ class LinkGame:
             Button("返回菜单", "menu", BTN_COLORS[3]),
         ]
 
-        mw, mh = 400, 80
-        cx, cy = WIDTH // 2, HEIGHT // 2 - 50
-        self.menu_buttons[0].update_rect(cx - mw // 2, cy - 120, mw, mh)
-        self.menu_buttons[1].update_rect(cx - mw // 2, cy - 20, mw, mh)
-        self.menu_buttons[2].update_rect(cx - mw // 2, cy + 80, mw, mh)
+        # --- 重新优化主菜单排版 ---
+        mw, mh = 360, 75
+        cx = WIDTH // 2
+        cy = HEIGHT // 2 + 50
+
+        # 三个按钮垂直间距 100 像素
+        self.menu_buttons[0].update_rect(cx - mw // 2, cy - 100, mw, mh)
+        self.menu_buttons[1].update_rect(cx - mw // 2, cy, mw, mh)
+        self.menu_buttons[2].update_rect(cx - mw // 2, cy + 100, mw, mh)
 
         self.state = "menu"
         self.current_diff = "normal"
@@ -131,7 +147,8 @@ class LinkGame:
     def load_images(self):
         self.tile_surfs = []
         try:
-            files = sorted([f for f in os.listdir("assets") if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))])
+            files = sorted([f for f in os.listdir("assets") if
+                            f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')) and not f.startswith('bg.')])
         except Exception:
             files = []
 
@@ -171,7 +188,6 @@ class LinkGame:
         self.f_mid = load_font(28, bold=True)
         self.f_btn = load_font(22, bold=True)
 
-        # 第二排按钮：水平居中排列
         bw, bh = 100, 40
         gap = 15
         total_w = 4 * bw + 3 * gap
@@ -353,13 +369,21 @@ class LinkGame:
                 self.state = "lost"
 
     def draw(self):
-        self.screen.fill(BG)
+        # --- 绘制背景 ---
+        if self.bg_surf:
+            self.screen.blit(self.bg_surf, (0, 0))
+        else:
+            self.screen.fill(BG)
 
         if self.state == "menu":
+            # --- 主菜单界面绘制 ---
             title = load_font(80, True).render("振华连连看", True, ACCENT)
-            self.screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 3 - 50)))
-            sub = load_font(32).render("请选择难度开始游戏", True, TEXT)
-            self.screen.blit(sub, sub.get_rect(center=(WIDTH // 2, HEIGHT // 3 + 20)))
+            # 将标题放到按钮上方，拉开间距
+            self.screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 180)))
+
+            sub = load_font(30).render("请选择难度开始游戏", True, TEXT)
+            self.screen.blit(sub, sub.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 110)))
+
             mouse_pos = pygame.mouse.get_pos()
             btn_font = load_font(32, True)
             for btn in self.menu_buttons:
@@ -412,10 +436,12 @@ class LinkGame:
                 pts = [self.cell_center(r, c) for r, c in e["path"]]
                 if len(pts) >= 2: pygame.draw.lines(self.screen, (*ACCENT, int(255 * (1 - p))), False, pts, 4)
 
-        # --- HUD 绘制 ---
-        pygame.draw.rect(self.screen, (34, 39, 54), (0, 0, WIDTH, HUD_H))
+        # --- 游戏 HUD 绘制 (半透明遮罩) ---
+        hud_surf = pygame.Surface((WIDTH, HUD_H), pygame.SRCALPHA)
+        hud_surf.fill((34, 39, 54, 220))  # 220 是透明度，避免完全遮挡背景图
+        self.screen.blit(hud_surf, (0, 0))
 
-        # 第一行（标题、难度、分数、状态）
+        # 第一行
         title_font = load_font(28, bold=True)
         title_text = title_font.render(f"振华连连看 - {self.diff_name}模式", True, ACCENT)
         self.screen.blit(title_text, (20, 15))
@@ -426,7 +452,7 @@ class LinkGame:
         right_text = self.f_mid.render(f"剩余 {self.remaining()}  |  时间 {int(self.time_left):03d}s", True, tcol)
         self.screen.blit(right_text, right_text.get_rect(topright=(WIDTH - 20, 15)))
 
-        # 第二行（按钮，居中画）
+        # 第二行按钮
         mouse_pos = pygame.mouse.get_pos()
         for btn in self.buttons:
             btn.draw(self.screen, self.f_btn, mouse_pos)
