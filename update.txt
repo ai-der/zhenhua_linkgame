@@ -62,7 +62,7 @@ $html_content = @"
     <script src="browserfs.min.js"></script>
 </head>
 <body>
-    <script src="https://pygame-web.github.io/cdn/0.9.3/pythons.js" type="module" id="site" data-os="vtx,snd,gui" async defer>
+    <script src="https://pygame-web.github.io/cdn/0.9.3/pythons.js" type="module" id="site" data-os="vtx,gui" async defer>
 #<!--
 import asyncio
 import platform
