@@ -540,10 +540,6 @@ class LinkGame:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     self._handle_click(event.pos)
-                elif event.type == pygame.FINGERDOWN:
-                    x = int(event.x * WIDTH)
-                    y = int(event.y * HEIGHT)
-                    self._handle_click((x, y))
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         running = False
