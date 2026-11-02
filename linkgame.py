@@ -8,15 +8,14 @@ import pygame
 
 # ==================== 全局配置 ====================
 DIFFICULTIES = {
-    "easy": (6, 6, 110, 300),
-    "normal": (8, 8, 90, 240),
-    "hard": (10, 10, 72, 180)
+    "easy": (6, 6, 110, 300, "简单"),
+    "normal": (8, 8, 90, 240, "普通"),
+    "hard": (10, 10, 72, 180, "困难")
 }
 
-# 宽屏画布，完美适配手机横屏
 WIDTH = 1100
 HEIGHT = 900
-HUD_H = 100  # 固定高度，不再乱动
+HUD_H = 120  # 加高 HUD 以容纳两行
 
 MARGIN = 40
 FPS = 60
@@ -106,14 +105,12 @@ class LinkGame:
         self.tile_surfs = []
         self.load_images()
 
-        # 主菜单按钮
         self.menu_buttons = [
             Button("简单模式 (6x6)", "easy", BTN_COLORS[0]),
             Button("普通模式 (8x8)", "normal", BTN_COLORS[1]),
             Button("困难模式 (10x10)", "hard", BTN_COLORS[2]),
         ]
 
-        # 游戏内操作按钮
         self.buttons = [
             Button("重排", "reshuffle", BTN_COLORS[0]),
             Button("提示", "hint", BTN_COLORS[1]),
@@ -164,25 +161,27 @@ class LinkGame:
 
     def set_difficulty(self, diff):
         self.current_diff = diff
-        self.rows, self.cols, self.tile_size, self.time_limit = DIFFICULTIES[diff]
+        self.rows, self.cols, self.tile_size, self.time_limit, self.diff_name = DIFFICULTIES[diff]
         self.board_w = self.cols * self.tile_size
         self.board_h = self.rows * self.tile_size
 
         self.board_x = (WIDTH - self.board_w) // 2
         self.board_y = HUD_H + 30
 
-        self.f_mid = load_font(36, bold=True)
-        self.f_btn = load_font(24, bold=True)
+        self.f_mid = load_font(28, bold=True)
+        self.f_btn = load_font(22, bold=True)
 
-        # 操作按钮放右侧，间隔 10 像素
+        # 第二排按钮：水平居中排列
         bw, bh = 100, 40
-        gap = 10
-        # 从右向左排：返回、新游戏、提示、重排
-        right_edge = WIDTH - self.board_x
-        self.buttons[3].update_rect(right_edge - bw, 30, bw, bh)
-        self.buttons[2].update_rect(right_edge - bw * 2 - gap, 30, bw, bh)
-        self.buttons[1].update_rect(right_edge - bw * 3 - gap * 2, 30, bw, bh)
-        self.buttons[0].update_rect(right_edge - bw * 4 - gap * 3, 30, bw, bh)
+        gap = 15
+        total_w = 4 * bw + 3 * gap
+        start_x = (WIDTH - total_w) // 2
+        y_pos = 65
+
+        self.buttons[0].update_rect(start_x, y_pos, bw, bh)
+        self.buttons[1].update_rect(start_x + bw + gap, y_pos, bw, bh)
+        self.buttons[2].update_rect(start_x + (bw + gap) * 2, y_pos, bw, bh)
+        self.buttons[3].update_rect(start_x + (bw + gap) * 3, y_pos, bw, bh)
 
         self.new_game()
 
@@ -295,7 +294,6 @@ class LinkGame:
                     return
             return
 
-        # 仅检测右侧按钮
         for btn in self.buttons:
             if btn.enabled and btn.rect.collidepoint(pos):
                 if btn.action == "menu":
@@ -417,13 +415,18 @@ class LinkGame:
         # --- HUD 绘制 ---
         pygame.draw.rect(self.screen, (34, 39, 54), (0, 0, WIDTH, HUD_H))
 
-        # 左侧文字（分配足够的空间）
-        self.screen.blit(self.f_mid.render(f"分数  {self.score}", True, TEXT), (self.board_x, 30))
-        self.screen.blit(self.f_mid.render(f"剩余  {self.remaining()}", True, TEXT), (self.board_x + 180, 30))
-        tcol = (255, 110, 110) if self.time_left < 30 else TEXT
-        self.screen.blit(self.f_mid.render(f"时间  {int(self.time_left):03d}s", True, tcol), (self.board_x + 360, 30))
+        # 第一行（标题、难度、分数、状态）
+        title_font = load_font(28, bold=True)
+        title_text = title_font.render(f"振华连连看 - {self.diff_name}模式", True, ACCENT)
+        self.screen.blit(title_text, (20, 15))
 
-        # 右侧按钮（画四个按钮）
+        self.screen.blit(self.f_mid.render(f"分数  {self.score}", True, TEXT), (WIDTH // 2 - 60, 15))
+
+        tcol = (255, 110, 110) if self.time_left < 30 else TEXT
+        right_text = self.f_mid.render(f"剩余 {self.remaining()}  |  时间 {int(self.time_left):03d}s", True, tcol)
+        self.screen.blit(right_text, right_text.get_rect(topright=(WIDTH - 20, 15)))
+
+        # 第二行（按钮，居中画）
         mouse_pos = pygame.mouse.get_pos()
         for btn in self.buttons:
             btn.draw(self.screen, self.f_btn, mouse_pos)
