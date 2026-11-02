@@ -6,7 +6,7 @@ import asyncio
 from collections import deque
 import pygame
 
-# ==================== 全局配置 ====================
+# ==================== 全局配置 (固定尺寸，绝对稳定) ====================
 DIFFICULTIES = {
     "easy": (6, 6, 110, 300, "简单"),
     "normal": (8, 8, 90, 240, "普通"),
@@ -98,11 +98,14 @@ class Button:
 
 class LinkGame:
     def __init__(self):
-        pygame.init()
+        # 网页端防死锁初始化（不要用 pygame.init()，会卡音频）
+        pygame.display.init()
+        pygame.font.init()
+
         self.clock = pygame.time.Clock()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
-        # 加载背景图并调暗 (消除过亮感)
+        # 1. 加载背景图并处理透明度 (自动加暗色遮罩)
         self.bg_surf = None
         for ext in ['.jpg', '.png', '.jpeg']:
             bg_path = f"assets/bg{ext}"
@@ -110,7 +113,7 @@ class LinkGame:
                 try:
                     img = pygame.image.load(bg_path).convert()
                     self.bg_surf = pygame.transform.smoothscale(img, (WIDTH, HEIGHT))
-                    # 给背景图加一层半透明的黑色，降低亮度
+                    # 铺一层半透明黑色，让背景图暗下来
                     dark_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
                     dark_overlay.fill((0, 0, 0, 120))  # 120 是透明度，越大越暗
                     self.bg_surf.blit(dark_overlay, (0, 0))
@@ -139,7 +142,7 @@ class LinkGame:
         self.current_diff = "normal"
         self._last_click = 0
 
-        # 初始化菜单排版
+        # 初始化主菜单按钮排版
         mw, mh = 360, 75
         cx = WIDTH // 2
         cy = HEIGHT // 2 + 50
@@ -197,6 +200,7 @@ class LinkGame:
         self.f_mid = load_font(28, bold=True)
         self.f_btn = load_font(22, bold=True)
 
+        # 游戏内按钮靠右排列
         bw, bh = 100, 40
         gap = 15
         total_w = 4 * bw + 3 * gap
@@ -460,11 +464,12 @@ class LinkGame:
                 pts = [self.cell_center(r, c) for r, c in e["path"]]
                 if len(pts) >= 2: pygame.draw.lines(self.screen, (*ACCENT, int(255 * (1 - p))), False, pts, 4)
 
-        # --- 游戏 HUD 绘制 ---
+        # --- 游戏 HUD 绘制 (半透明渲染) ---
         hud_surf = pygame.Surface((WIDTH, HUD_H), pygame.SRCALPHA)
-        hud_surf.fill((34, 39, 54, 220))
+        hud_surf.fill((34, 39, 54, 220))  # 220 是透明度，透出一点背景
         self.screen.blit(hud_surf, (0, 0))
 
+        # 第一行
         title_font = load_font(28, bold=True)
         title_text = title_font.render(f"振华连连看 - {self.diff_name}模式", True, ACCENT)
         self.screen.blit(title_text, (20, 15))
@@ -475,6 +480,7 @@ class LinkGame:
         right_text = self.f_mid.render(f"剩余 {self.remaining()}  |  时间 {int(self.time_left):03d}s", True, tcol)
         self.screen.blit(right_text, right_text.get_rect(topright=(WIDTH - 20, 15)))
 
+        # 第二行按钮
         mouse_pos = pygame.mouse.get_pos()
         for btn in self.buttons:
             btn.draw(self.screen, self.f_btn, mouse_pos)
@@ -489,7 +495,7 @@ class LinkGame:
         # --- 结算界面 ---
         if self.state != "playing":
             veil = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            veil.fill((10, 12, 20, 200))  # 加深遮罩，让结算文字更清晰
+            veil.fill((10, 12, 20, 200))
             self.screen.blit(veil, (0, 0))
 
             # 结算弹窗底板
@@ -519,6 +525,7 @@ class LinkGame:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     self._handle_click(event.pos)
+                # 手机端触摸支持
                 elif event.type == pygame.FINGERDOWN:
                     x = int(event.x * WIDTH)
                     y = int(event.y * HEIGHT)
