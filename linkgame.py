@@ -12,10 +12,10 @@ DIFFICULTIES = {
     "normal": (8, 8, 90, 240, "普通"),
     "hard": (10, 10, 72, 180, "困难")
 }
-# 固定标准宽屏比例
-WIDTH = 1280
-HEIGHT = 800
-HUD_H = 140
+
+WIDTH = 1100
+HEIGHT = 900
+HUD_H = 120
 
 MARGIN = 40
 FPS = 60
@@ -100,8 +100,7 @@ class LinkGame:
     def __init__(self):
         pygame.init()
         self.clock = pygame.time.Clock()
-        # 加上 SCALED 标志，自动处理缩放和触摸映射
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED | pygame.RESIZABLE)
+        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
         # 加载背景图并调暗 (消除过亮感)
         self.bg_surf = None
@@ -520,6 +519,10 @@ class LinkGame:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     self._handle_click(event.pos)
+                elif event.type == pygame.FINGERDOWN:
+                    x = int(event.x * WIDTH)
+                    y = int(event.y * HEIGHT)
+                    self._handle_click((x, y))
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         running = False

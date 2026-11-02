@@ -1,50 +1,37 @@
 # ==========================================
-# 连连看一键打包上传脚本 (彻底断网也能玩版)
+# 连连看一键打包上传脚本 (终极防缓存版)
 # ==========================================
 
 Write-Host "1. 正在清理旧文件..." -ForegroundColor Cyan
 Remove-Item -Recurse -Force build, docs -ErrorAction SilentlyContinue
 
+# 生成一个时间戳，用于区分每次的包
+$timestamp = Get-Date -Format "yyyyMMddHHmmss"
+$bundle_name = "zhenhua_linkgame_$timestamp"
+
 Write-Host "2. 正在使用 Pygbag 打包..." -ForegroundColor Cyan
 $env:PYTHONUTF8="1"
-# 限制15秒，只要生成了包就强制结束，无视网络报错
-$job = Start-Job -ScriptBlock {
-    $env:PYTHONUTF8="1"
-    Set-Location $using:PWD
-    python -m pygbag --build --ume_block 0 main.py
-}
-$job | Wait-Job -Timeout 15 | Out-Null
-if ($job.State -eq 'Running') { Stop-Job $job }
-Remove-Job $job -Force
+python -m pygbag --build --ume_block 0 main.py 2>$null
 
-Write-Host "3. 正在组装 docs 目录 (直接提取所有本地文件)..." -ForegroundColor Cyan
-New-Item -ItemType Directory -Path docs -Force | Out-Null
+Write-Host "3. 正在组装 docs 目录..." -ForegroundColor Cyan
+New-Item -ItemType Directory -Path docs | Out-Null
 
-# 🌟 核心修复：直接把 build/web 里面所有的东西全搬过来！
-# 因为 Pygbag 在打包时，其实已经悄悄把 pythons.js、wasm 等运行库下载到了 build/web 里。
-if (Test-Path build\web) {
-    Copy-Item -Path build\web\* -Destination docs -Recurse -Force
-    Write-Host "✅ 已将 build/web 全部本地文件提取到 docs" -ForegroundColor Green
+if (Test-Path build\web\zhenhua_linkgame.tar.gz) {
+    # 核心：把游戏包重命名为带时间戳的名字
+    Copy-Item build\web\zhenhua_linkgame.tar.gz -Destination "docs\$bundle_name.tar.gz" -Force
+    Write-Host "✅ 已将游戏包重命名为 $bundle_name.tar.gz" -ForegroundColor Green
 } else {
-    Write-Host "❌ 打包完全失败，连 build/web 都没生成！" -ForegroundColor Red
+    Write-Host "❌ 打包失败：找不到 .tar.gz 文件！" -ForegroundColor Red
     exit
 }
 
-# 检查核心包是否存在
-if (-not (Test-Path docs\zhenhua_linkgame.tar.gz)) {
-    Write-Host "❌ 找不到游戏核心包 .tar.gz！" -ForegroundColor Red
-    exit
-}
-
-# 强行去旧项目里拿 browserfs.min.js (因为官方打包常常漏掉这个)
+# 强行去旧项目里拿 browserfs.min.js
 $old_bfs_path = "F:\py_project\pythonProject\lianliankan\docs\browserfs.min.js"
 if (Test-Path $old_bfs_path) {
     Copy-Item $old_bfs_path -Destination docs\browserfs.min.js -Force
-    Write-Host "✅ 成功从旧项目复制 browserfs.min.js" -ForegroundColor Green
 }
 
-# 写入终极自适应 index.html
-# 注意：<script src="pythons.js" ...> 已经改为本地引用！
+# 写入终极自适应 index.html（动态替换 bundle 名字）
 $html_content = @"
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -73,7 +60,7 @@ $html_content = @"
     <script src="browserfs.min.js"></script>
 </head>
 <body>
-    <script src="pythons.js" type="module" id="site" data-os="vtx,gui" async defer>
+    <script src="https://pygame-web.github.io/cdn/0.9.3/pythons.js" type="module" id="site" data-os="vtx,snd,gui" async defer>
 #<!--
 import asyncio
 import platform
@@ -84,7 +71,7 @@ async def custom_site():
     platform.document.body.style.background = "#1a1e2a"
     platform.window.transfer.hidden = true
     platform.window.canvas.style.visibility = "visible"
-    bundle = "zhenhua_linkgame"
+    bundle = "$bundle_name" # 动态替换包名
     appdir = Path(f"/data/data/{bundle}")
     appdir.mkdir(exist_ok=True)
     import tarfile
@@ -116,11 +103,11 @@ asyncio.run(custom_site())
 "@
 
 Set-Content -Path docs\index.html -Value $html_content -Encoding UTF8
-New-Item -ItemType File -Path docs\.nojekyll -Force | Out-Null
+New-Item -ItemType File -Path docs\.nojekyll | Out-Null
 
 Write-Host "4. 正在推送到 GitHub..." -ForegroundColor Cyan
 git add .
-git commit -m "Auto-deploy: 全本地化部署，彻底摆脱外网 CDN"
+git commit -m "Auto-deploy: 突破浏览器缓存限制"
 git push -f origin main
 
 Write-Host "🎉 全部完成！请等待 1 分钟后刷新网页查看最新版本。" -ForegroundColor Magenta
