@@ -1,0 +1,115 @@
+# ==========================================
+# 连连看 (Zhenhua LinkGame) 一键打包上传脚本
+# ==========================================
+
+Write-Host "1. 正在清理旧文件..." -ForegroundColor Cyan
+Remove-Item -Recurse -Force build, docs -ErrorAction SilentlyContinue
+
+Write-Host "2. 正在使用 Pygbag 打包..." -ForegroundColor Cyan
+$env:PYTHONUTF8="1"
+# 忽略网络报错，只要核心包生成即可
+python -m pygbag --build --ume_block 0 main.py 2>$null
+
+Write-Host "3. 正在组装 docs 目录..." -ForegroundColor Cyan
+New-Item -ItemType Directory -Path docs | Out-Null
+
+# 只复制核心游戏包，避免复制损坏的 index.html
+if (Test-Path build\web\zhenhua_linkgame.tar.gz) {
+    Copy-Item build\web\zhenhua_linkgame.tar.gz -Destination docs\ -Force
+    Copy-Item build\web\zhenhua_linkgame.apk -Destination docs\ -Force
+} else {
+    Write-Host "❌ 打包失败：找不到 .tar.gz 文件！" -ForegroundColor Red
+    exit
+}
+
+# 处理 browserfs 文件
+$bfs_path = "browserfs.min.js"
+if (-not (Test-Path $bfs_path)) {
+    # 如果根目录没有，尝试从旧版 docs 或 build/web 找
+    if (Test-Path build\web\browserfs.min.js) { $bfs_path = "build\web\browserfs.min.js" }
+    elseif (Test-Path ..\docs\browserfs.min.js) { $bfs_path = "..\docs\browserfs.min.js" }
+}
+if (Test-Path $bfs_path) {
+    Copy-Item $bfs_path -Destination docs\browserfs.min.js -Force
+    Write-Host "✅ 已放入 browserfs.min.js" -ForegroundColor Green
+} else {
+    Write-Host "⚠️ 警告：没找到 browserfs.min.js，请确保它存在！" -ForegroundColor Yellow
+}
+
+# 写入终极自适应 index.html (带防模糊和触摸修复)
+$html_content = @"
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>振华连连看</title>
+    <style>
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #1a1e2a;
+        }
+        canvas {
+            width: 100vw !important;
+            height: 100vh !important;
+            object-fit: contain;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+        }
+    </style>
+    <script src="browserfs.min.js"></script>
+</head>
+<body>
+    <script src="https://pygame-web.github.io/cdn/0.9.3/pythons.js" type="module" id="site" data-os="vtx,snd,gui" async defer>
+#<!--
+import asyncio
+import platform
+from pathlib import Path
+import tarfile
+
+async def custom_site():
+    platform.document.body.style.background = "#1a1e2a"
+    platform.window.transfer.hidden = true
+    platform.window.canvas.style.visibility = "visible"
+    bundle = "zhenhua_linkgame"
+    appdir = Path(f"/data/data/{bundle}")
+    appdir.mkdir(exist_ok=True)
+    import tarfile
+    async with platform.fopen(f"{bundle}.tar.gz", "rb") as archive:
+        tar = tarfile.open(fileobj=archive, mode="r:gz")
+        tar.extractall(path=appdir.as_posix(), filter='tar')
+        tar.close()
+    platform.run_main(PyConfig, loaderhome= appdir / "assets", loadermain=None)
+    import embed
+    while embed.counter()<0:
+        await asyncio.sleep(.1)
+    main = appdir / "assets" / "main.py"
+    if not platform.window.MM.UME:
+        while not platform.window.MM.UME:
+            await asyncio.sleep(.1)
+    await TopLevel_async_handler.start_toplevel(platform.shell, console=False)
+    __import__(__name__).__file__ = main
+    await shell.source(main)
+    platform.window.infobox.style.display = "none"
+    platform.window.config.gui_divider = 1
+    platform.window.window_resize()
+    shell.interactive()
+
+asyncio.run(custom_site())
+# --></script>
+    <canvas id="canvas" width="1px" height="1px" oncontextmenu="event.preventDefault()" tabindex=1></canvas>
+    <div id="infobox" style="display:none;">Loading...</div>
+</body>
+</html>
+"@
+
+Set-Content -Path docs\index.html -Value $html_content -Encoding UTF8
+New-Item -ItemType File -Path docs\.nojekyll | Out-Null
+
+Write-Host "4. 正在推送到 GitHub..." -ForegroundColor Cyan
+# 确保不被大文件卡住，直接强行推送
+git add .
+git commit -m "Auto-deploy: 更新游戏代码与资源"
+git push -f origin main
+
+Write-Host "🎉 全部完成！请等待 1 分钟后刷新网页查看最新版本。" -ForegroundColor Magenta

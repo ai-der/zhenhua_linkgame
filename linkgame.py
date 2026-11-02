@@ -4,27 +4,19 @@ import os
 import random
 import asyncio
 from collections import deque
+import pygame
 
-# 强行把 pygame 暴露到全局，防止在网页端被吞
-try:
-    import pygame
-except ImportError:
-    print("❌ 找不到 pygame")
 # ==================== 全局配置 ====================
-ROWS, COLS = 6, 8     # 棋盘行数、列数
-TILE = 96            # ★ 方块基准尺寸:改这一个数就能整体放大/缩小、推荐:64（紧凑）/ 80（舒适）/ 96（大屏）/ 120（超大）
-MARGIN = 40
-HUD_H = 120
+# 难度字典： (行数, 列数, 方块大小, 时间限制)
+DIFFICULTIES = {
+    "easy": (6, 6, 110, 300),
+    "normal": (8, 8, 90, 240),
+    "hard": (10, 10, 72, 180)
+}
 
-# 重新计算画布大小
-BOARD_W = COLS * TILE
-BOARD_H = ROWS * TILE
-WIDTH = BOARD_W + MARGIN * 2
-HEIGHT = BOARD_H + MARGIN * 2 + HUD_H
-BOARD_X = MARGIN
-BOARD_Y = HUD_H + MARGIN
+MARGIN = 40
+HUD_H = 140  # 增高信息栏，容纳两排按钮
 FPS = 60
-TOTAL_TIME = 240.0
 
 # 颜色定义
 BG = (26, 30, 42)
@@ -33,46 +25,26 @@ GRID_LINE = (46, 52, 70)
 TEXT = (236, 240, 248)
 ACCENT = (255, 209, 102)
 HINT_COLOR = (110, 230, 255)
+BTN_COLORS = [(230, 150, 70), (70, 170, 200), (70, 180, 140), (200, 100, 200)]
 
 PALETTE = [
     (239, 71, 111), (255, 193, 7), (6, 214, 160), (17, 138, 178),
     (131, 56, 236), (255, 140, 66), (0, 187, 249), (247, 37, 133),
 ]
-LETTERS = "ABCDEFGH"
+LETTERS = "ABCDEFGHIJKLMNOP"
 DIRS = ((-1, 0), (1, 0), (0, -1), (0, 1))
 
 
 # ==================== 工具函数 ====================
 def load_font(size, bold=False):
-    """针对网页端优化:直接尝试加载本地 font.otf，防崩溃兜底"""
     try:
         return pygame.font.Font("font.otf", size)
     except Exception:
         return pygame.font.Font(None, size)
 
 
-def cell_topleft(r, c):
-    return (BOARD_X + (c - 1) * TILE + 3, BOARD_Y + (r - 1) * TILE + 3)
-
-
-def cell_center(r, c):
-    # 如果是外圈（上、下、左、右），把坐标限制在棋盘边框外一点点，防止超出屏幕被截断
-    if r == 0:
-        return (BOARD_X + (c - 1) * TILE + TILE // 2, BOARD_Y - 15)
-    elif r == ROWS + 1:
-        return (BOARD_X + (c - 1) * TILE + TILE // 2, BOARD_Y + BOARD_H + 15)
-    elif c == 0:
-        return (BOARD_X - 15, BOARD_Y + (r - 1) * TILE + TILE // 2)
-    elif c == COLS + 1:
-        return (BOARD_X + BOARD_W + 15, BOARD_Y + (r - 1) * TILE + TILE // 2)
-
-    # 如果是棋盘内部的格子，正常计算中心点
-    return (BOARD_X + (c - 1) * TILE + TILE // 2, BOARD_Y + (r - 1) * TILE + TILE // 2)
-
-
-def find_path(grid, a, b):
-    """BFS 寻路，限制拐弯 <= 2 次"""
-    H, W = ROWS + 2, COLS + 2
+def find_path(grid, rows, cols, a, b):
+    H, W = rows + 2, cols + 2
     INF = 99
     best = [[[INF] * 4 for _ in range(W)] for _ in range(H)]
     parent = {}
@@ -87,11 +59,9 @@ def find_path(grid, a, b):
             nr, nc = r + dr, c + dc
             if not (0 <= nr < H and 0 <= nc < W):
                 continue
-
             nt = turns if (d == -1 or d == nd) else turns + 1
             if nt > 2:
                 continue
-
             if (nr, nc) == b:
                 path = []
                 cur = (r, c, d)
@@ -101,10 +71,8 @@ def find_path(grid, a, b):
                 path.reverse()
                 path.append(b)
                 return path
-
             if grid[nr][nc] != -1:
                 continue
-
             if nt < best[nr][nc][nd]:
                 best[nr][nc][nd] = nt
                 parent[(nr, nc, nd)] = (r, c, d)
@@ -114,12 +82,15 @@ def find_path(grid, a, b):
 
 # ==================== UI 按钮 ====================
 class Button:
-    def __init__(self, x, y, w, h, text, action, base_color):
-        self.rect = pygame.Rect(x, y, w, h)
+    def __init__(self, text, action, base_color):
+        self.rect = pygame.Rect(0, 0, 0, 0)
         self.text = text
         self.action = action
         self.base_color = base_color
         self.enabled = True
+
+    def update_rect(self, x, y, w, h):
+        self.rect.update(x, y, w, h)
 
     def draw(self, screen, font, mouse_pos):
         hovered = self.enabled and self.rect.collidepoint(mouse_pos)
@@ -127,7 +98,6 @@ class Button:
             max(0, c - 30) for c in self.base_color)
         if hovered and self.enabled:
             pygame.draw.rect(screen, (255, 255, 255), self.rect, 2, border_radius=8)
-
         pygame.draw.rect(screen, bg, self.rect, border_radius=8)
         txt = font.render(self.text, True, (240, 244, 252) if self.enabled else (108, 114, 132))
         screen.blit(txt, txt.get_rect(center=self.rect.center))
@@ -136,112 +106,119 @@ class Button:
 # ==================== 游戏主体 ====================
 class LinkGame:
     def __init__(self):
-        print("▶️ [Debug] 进入 LinkGame.__init__ ...")
-
-        # ✅ 打印一下 pygame 到底是什么
-        print("▶️ [Debug] 当前 pygame 的路径:", getattr(pygame, "__file__", "未知"))
-
-        try:
-            pygame.display.init()
-            pygame.font.init()
-            print("▶️ [Debug] 显示与字体模块初始化成功")
-        except Exception as e:
-            print(f"❌ [Debug] pygame 模块初始化失败: {e}")
-
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        print("▶️ [Debug] set_mode() 完成")
-
+        pygame.init()
         self.clock = pygame.time.Clock()
 
-        print("▶️ [Debug] 开始加载字体...")
-        self.f_mid = load_font(28, bold=True)
-        self.f_small = load_font(17)
-        self.f_tile = load_font(36, bold=True)
-        self.f_btn = load_font(16, bold=True)
-        print("▶️ [Debug] 字体加载完成")
+        self.current_diff = "normal"
+        self.tile_surfs = []
+        self.load_images()
 
-        # ================= 加载图片 =================
-        print("▶️ [Debug] 开始加载 assets 图片...")
+        self.buttons = [
+            Button("简单", "easy", BTN_COLORS[0]),
+            Button("普通", "normal", BTN_COLORS[1]),
+            Button("困难", "hard", BTN_COLORS[2]),
+            Button("重排", "reshuffle", BTN_COLORS[0]),
+            Button("提示", "hint", BTN_COLORS[1]),
+            Button("新游戏", "new_game", BTN_COLORS[2]),
+        ]
+
+        self.set_difficulty("normal")
+
+    def load_images(self):
         self.tile_surfs = []
         assets_dir = "assets"
-
         try:
-            # 动态扫描所有支持的图片格式，不管里面有几张图
-            files = sorted([
-                f for f in os.listdir(assets_dir)
-                if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))
-            ])
-            print(f"✅ [Debug] 成功识别到 {len(files)} 张图片")
-        except Exception as e:
-            print(f"❌ [Debug] 读取 assets 失败: {e}")
+            files = sorted(
+                [f for f in os.listdir(assets_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))])
+        except Exception:
             files = []
-
-        # 在循环开始前定义参数（你可以在这里随意修改数字）定义图片大小
-        # 按 TILE 尺寸动态计算留白和圆角
-        pad = int(TILE * 0.05)  # 留白占方块总宽度的 5%
-        rad = int(TILE * 0.2)  # 圆角占方块总宽度的 20%
 
         for name in files:
             path = os.path.join(assets_dir, name)
             try:
-                # 1. 加载原图
                 img = pygame.image.load(path).convert_alpha()
-                s = TILE - 4  # 尽量占满，留2px缝隙
-
-                # 2. 将原图直接缩放铺满整个方块
-                img_scaled = pygame.transform.smoothscale(img, (s, s))
-
-                # 3. 创建一个透明的圆角遮罩
+                s = 200  # 保持高分辨率，在画的时候再缩放
                 surf = pygame.Surface((s, s), pygame.SRCALPHA)
-                surf.blit(img_scaled, (0, 0))
+                color_idx = sum(ord(c) for c in name) % len(PALETTE)
+                pygame.draw.rect(surf, PALETTE[color_idx], (0, 0, s, s), border_radius=40)
 
-                # 4. 画一个圆角矩形作为遮罩，把多出去的四角全部透明化
+                img_scaled = pygame.transform.smoothscale(img, (s - 16, s - 16))
+                layer = pygame.Surface((s, s), pygame.SRCALPHA)
+                layer.blit(img_scaled, (8, 8))
+
                 mask = pygame.Surface((s, s), pygame.SRCALPHA)
-                pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, s, s), border_radius=12)
+                pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, s, s), border_radius=40)
+                layer.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
 
-                # 5. 将遮罩应用到图片上（这会完美裁掉四角）
-                surf.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-
+                surf.blit(layer, (0, 0))
                 self.tile_surfs.append(surf)
             except Exception as e:
                 print(f"❌ 图片加载失败 {path}: {e}")
 
-        # 兜底:如果图太少，用颜色方块补齐
         if len(self.tile_surfs) < 2:
-            print("⚠️ 警告:有效图片少于 2 种，使用默认彩色方块兜底！")
             for i in range(8):
-                surf = pygame.Surface((TILE - 6, TILE - 6))
+                surf = pygame.Surface((200, 200))
                 surf.fill(PALETTE[i % len(PALETTE)])
                 self.tile_surfs.append(surf)
 
-        # 自动计算种类数量
-        self.num_kinds = len(self.tile_surfs)
-        print(f"✅ [Debug] 最终加载图案种类: {self.num_kinds}")
-        # ================= 图片加载结束 =================
+    def set_difficulty(self, diff):
+        self.current_diff = diff
+        self.rows, self.cols, self.tile_size, self.time_limit = DIFFICULTIES[diff]
 
+        self.board_w = self.cols * self.tile_size
+        self.board_h = self.rows * self.tile_size
+        self.width = self.board_w + MARGIN * 2
+        self.height = self.board_h + MARGIN * 2 + HUD_H
+        self.board_x = MARGIN
+        self.board_y = HUD_H + MARGIN
 
-        # 按钮初始化
-        bw, bh, gap = 90, 36, 15
-        start_x = (WIDTH - (bw * 3 + gap * 2)) // 2
-        self.buttons = [
-            Button(start_x, 50, bw, bh, "重排", "reshuffle", (230, 150, 70)),
-            Button(start_x + bw + gap, 50, bw, bh, "提示", "hint", (70, 170, 200)),
-            Button(start_x + (bw + gap) * 2, 50, bw, bh, "新游戏", "new_game", (70, 180, 140)),
-        ]
-        print("▶️ [Debug] 按钮初始化完成")
+        # 网页端必须使用基础模式，这里由于尺寸大，手机端能够自适应缩放
+        self.screen = pygame.display.set_mode((self.width, self.height))
+
+        # 根据窗口大小动态调整字体和按钮
+        self.f_mid = load_font(int(self.tile_size * 0.35), bold=True)
+        self.f_small = load_font(int(self.tile_size * 0.25))
+        self.f_btn = load_font(int(self.tile_size * 0.22), bold=True)
+
+        # 布局按钮
+        bw = self.board_w // 3 - 10
+        bh = 36
+        start_x = self.board_x
+
+        # 第一排：难度选择
+        self.buttons[0].update_rect(start_x, 15, bw, bh)
+        self.buttons[1].update_rect(start_x + bw + 15, 15, bw, bh)
+        self.buttons[2].update_rect(start_x + (bw + 15) * 2, 15, bw, bh)
+
+        # 第二排：操作
+        self.buttons[3].update_rect(start_x, 60, bw, bh)
+        self.buttons[4].update_rect(start_x + bw + 15, 60, bw, bh)
+        self.buttons[5].update_rect(start_x + (bw + 15) * 2, 60, bw, bh)
+
         self.new_game()
-        print("✅ [Debug] LinkGame 初始化彻底完成！")
+
+    def cell_center(self, r, c):
+        if r == 0: return (self.board_x + (c - 1) * self.tile_size + self.tile_size // 2, self.board_y - 15)
+        if r == self.rows + 1: return (
+        self.board_x + (c - 1) * self.tile_size + self.tile_size // 2, self.board_y + self.board_h + 15)
+        if c == 0: return (self.board_x - 15, self.board_y + (r - 1) * self.tile_size + self.tile_size // 2)
+        if c == self.cols + 1: return (
+        self.board_x + self.board_w + 15, self.board_y + (r - 1) * self.tile_size + self.tile_size // 2)
+        return (self.board_x + (c - 1) * self.tile_size + self.tile_size // 2,
+                self.board_y + (r - 1) * self.tile_size + self.tile_size // 2)
+
     def new_game(self):
-        self.grid = [[-1] * (COLS + 2) for _ in range(ROWS + 2)]
+        self.grid = [[-1] * (self.cols + 2) for _ in range(self.rows + 2)]
         pool = []
-        for i in range((ROWS * COLS) // 2):
-            k = i % 8
+        kinds = len(self.tile_surfs)
+        for i in range((self.rows * self.cols) // 2):
+            k = i % kinds
             pool.extend((k, k))
         random.shuffle(pool)
 
         idx = 0
-        for r in range(1, ROWS + 1):
-            for c in range(1, COLS + 1):
+        for r in range(1, self.rows + 1):
+            for c in range(1, self.cols + 1):
                 self.grid[r][c] = pool[idx]
                 idx += 1
 
@@ -251,33 +228,31 @@ class LinkGame:
         self.hint_path = None
         self.hint_timer = 0.0
         self.score = 0
-        self.time_left = TOTAL_TIME
+        self.time_left = self.time_limit
         self.state = "playing"
         self.message = ""
         self.message_timer = 0.0
-
         self.ensure_solvable()
 
     def remaining(self):
-        return sum(1 for r in range(1, ROWS + 1) for c in range(1, COLS + 1) if self.grid[r][c] != -1)
+        return sum(1 for r in range(1, self.rows + 1) for c in range(1, self.cols + 1) if self.grid[r][c] != -1)
 
     def find_any_pair(self):
         groups = {}
-        for r in range(1, ROWS + 1):
-            for c in range(1, COLS + 1):
+        for r in range(1, self.rows + 1):
+            for c in range(1, self.cols + 1):
                 k = self.grid[r][c]
-                if k != -1:
-                    groups.setdefault(k, []).append((r, c))
+                if k != -1: groups.setdefault(k, []).append((r, c))
         for pts in groups.values():
             for i in range(len(pts)):
                 for j in range(i + 1, len(pts)):
-                    p = find_path(self.grid, pts[i], pts[j])
+                    p = find_path(self.grid, self.rows, self.cols, pts[i], pts[j])
                     if p: return (pts[i], pts[j], p)
         return None
 
     def do_reshuffle(self):
         if self.remaining() < 2: return
-        cells = [(r, c) for r in range(1, ROWS + 1) for c in range(1, COLS + 1) if self.grid[r][c] != -1]
+        cells = [(r, c) for r in range(1, self.rows + 1) for c in range(1, self.cols + 1) if self.grid[r][c] != -1]
         vals = [self.grid[r][c] for r, c in cells]
         for _ in range(60):
             random.shuffle(vals)
@@ -320,21 +295,17 @@ class LinkGame:
             self.do_reshuffle()
             self.set_message("自动重排！")
 
-    # ==================== 核心交互逻辑 ====================
     def _handle_click(self, pos):
         import time
-        current_time = time.time()
-        # ✅ 防抖:如果距离上一次点击不到 0.2 秒，直接忽略
-        if hasattr(self, '_last_click_time') and current_time - self._last_click_time < 0.2:
+        curr_t = time.time()
+        if hasattr(self, '_last_click') and curr_t - self._last_click < 0.2:
             return
-        self._last_click_time = current_time
+        self._last_click = curr_t
 
-        """统一处理鼠标/触摸点击"""
         if self.state != "playing":
             self.new_game()
             return
 
-        # 1. 检测按钮
         for btn in self.buttons:
             if btn.enabled and btn.rect.collidepoint(pos):
                 if btn.action == "new_game":
@@ -343,13 +314,15 @@ class LinkGame:
                     self.do_reshuffle()
                 elif btn.action == "hint":
                     self.show_hint()
+                elif btn.action in DIFFICULTIES:
+                    self.set_difficulty(btn.action)
                 return
 
-        # 2. 检测棋盘
-        if not (BOARD_X <= pos[0] < BOARD_X + BOARD_W and BOARD_Y <= pos[1] < BOARD_Y + BOARD_H):
+        if not (self.board_x <= pos[0] < self.board_x + self.board_w and self.board_y <= pos[
+            1] < self.board_y + self.board_h):
             return
-        c = int((pos[0] - BOARD_X) // TILE) + 1
-        r = int((pos[1] - BOARD_Y) // TILE) + 1
+        c = int((pos[0] - self.board_x) // self.tile_size) + 1
+        r = int((pos[1] - self.board_y) // self.tile_size) + 1
 
         if self.grid[r][c] == -1:
             self.selected = None
@@ -362,7 +335,7 @@ class LinkGame:
         else:
             a = self.selected
             if self.grid[a[0]][a[1]] == self.grid[r][c]:
-                path = find_path(self.grid, a, (r, c))
+                path = find_path(self.grid, self.rows, self.cols, a, (r, c))
                 if path:
                     self.clear_pair(a, (r, c), path)
                     self.selected = None
@@ -372,7 +345,7 @@ class LinkGame:
     def update(self, dt):
         playing = (self.state == "playing")
         for btn in self.buttons:
-            btn.enabled = True if btn.action == "new_game" else playing
+            btn.enabled = True if btn.action in ["new_game", "easy", "normal", "hard"] else playing
 
         for e in self.effects: e["t"] += dt
         self.effects = [e for e in self.effects if e["t"] < e["life"]]
@@ -391,74 +364,63 @@ class LinkGame:
                 self.time_left = 0
                 self.state = "lost"
 
-    # ==================== 渲染 ====================
     def draw(self):
         self.screen.fill(BG)
-        pygame.draw.rect(self.screen, PANEL, (BOARD_X - 10, BOARD_Y - 10, BOARD_W + 20, BOARD_H + 20), border_radius=20)
+        pygame.draw.rect(self.screen, PANEL,
+                         (self.board_x - 10, self.board_y - 10, self.board_w + 20, self.board_h + 20), border_radius=20)
 
-        for r in range(1, ROWS + 1):
-            for c in range(1, COLS + 1):
+        for r in range(1, self.rows + 1):
+            for c in range(1, self.cols + 1):
                 if (r + c) % 2 == 0:
-                    pygame.draw.rect(self.screen, GRID_LINE,
-                                     (BOARD_X + (c - 1) * TILE, BOARD_Y + (r - 1) * TILE, TILE, TILE))
+                    pygame.draw.rect(self.screen, GRID_LINE, (
+                    self.board_x + (c - 1) * self.tile_size, self.board_y + (r - 1) * self.tile_size, self.tile_size,
+                    self.tile_size))
 
-        for r in range(1, ROWS + 1):
-            for c in range(1, COLS + 1):
+        for r in range(1, self.rows + 1):
+            for c in range(1, self.cols + 1):
                 k = self.grid[r][c]
                 if k != -1:
-                    self.screen.blit(self.tile_surfs[k], cell_topleft(r, c))
+                    # 动态缩放渲染
+                    scaled = pygame.transform.smoothscale(self.tile_surfs[k], (self.tile_size - 6, self.tile_size - 6))
+                    self.screen.blit(scaled, (
+                    self.board_x + (c - 1) * self.tile_size + 3, self.board_y + (r - 1) * self.tile_size + 3))
 
         if self.selected:
-            x, y = cell_topleft(*self.selected)
-            pygame.draw.rect(self.screen, ACCENT, (x - 2, y - 2, TILE - 2, TILE - 2), 3, border_radius=12)
+            r, c = self.selected
+            x, y = self.board_x + (c - 1) * self.tile_size + 3, self.board_y + (r - 1) * self.tile_size + 3
+            pygame.draw.rect(self.screen, ACCENT, (x - 2, y - 2, self.tile_size - 2, self.tile_size - 2), 3,
+                             border_radius=12)
 
         if self.hint:
             for (r, c) in self.hint:
-                x, y = cell_topleft(r, c)
-                pygame.draw.rect(self.screen, HINT_COLOR, (x - 2, y - 2, TILE - 2, TILE - 2), 3, border_radius=12)
+                x, y = self.board_x + (c - 1) * self.tile_size + 3, self.board_y + (r - 1) * self.tile_size + 3
+                pygame.draw.rect(self.screen, HINT_COLOR, (x - 2, y - 2, self.tile_size - 2, self.tile_size - 2), 3,
+                                 border_radius=12)
             if self.hint_path:
-                pts = [cell_center(r, c) for r, c in self.hint_path]
-                pygame.draw.lines(self.screen, HINT_COLOR, False, pts, 3)
+                pts = [self.cell_center(r, c) for r, c in self.hint_path]
+                if len(pts) >= 2:
+                    pygame.draw.lines(self.screen, HINT_COLOR, False, pts, 3)
 
-        # 绘制特效
         for e in self.effects:
             p = min(1.0, e["t"] / e["life"])
             if e["type"] == "pop":
                 r, c = e["cell"]
-                cx, cy = cell_center(r, c)
-                surf = self.tile_surfs[e["kind"]].copy()
+                cx, cy = self.cell_center(r, c)
+                surf = pygame.transform.smoothscale(self.tile_surfs[e["kind"]],
+                                                    (self.tile_size - 6, self.tile_size - 6)).copy()
                 surf.set_alpha(int(255 * (1 - p)))
-                w = int(surf.get_width() * (1.0 + 0.5 * p))
-                surf = pygame.transform.smoothscale(surf, (w, w))
                 self.screen.blit(surf, surf.get_rect(center=(cx, cy)))
             elif e["type"] == "path":
-                pts = [cell_center(r, c) for r, c in e["path"]]
+                pts = [self.cell_center(r, c) for r, c in e["path"]]
+                if len(pts) >= 2:
+                    pygame.draw.lines(self.screen, (*ACCENT, int(255 * (1 - p))), False, pts, 4)
 
-                # 如果连线为空，直接跳过
-                if len(pts) < 2:
-                    continue
-
-                alpha = int(255 * (1 - p))
-
-                # ✅ 核心修复：建一个比窗口四周各大 100 像素的超大透明图层
-                PAD = 100
-                layer = pygame.Surface((WIDTH + PAD * 2, HEIGHT + PAD * 2), pygame.SRCALPHA)
-
-                # 把连线的所有坐标都加上 PAD 偏移量，画在这个大图层上
-                offset_pts = [(q[0] + PAD, q[1] + PAD) for q in pts]
-                pygame.draw.lines(layer, (*ACCENT, alpha), False, offset_pts, 4)
-
-                # 把这个大图层再贴回屏幕上，通过负偏移量把位置对齐
-                self.screen.blit(layer, (-PAD, -PAD))
-
-        # 绘制 HUD
-        pygame.draw.rect(self.screen, (34, 39, 54), (0, 0, WIDTH, HUD_H))
-        row1_y = 12
-        self.screen.blit(self.f_mid.render(f"分数  {self.score}", True, TEXT), (MARGIN, row1_y))
+        # HUD 绘制
+        pygame.draw.rect(self.screen, (34, 39, 54), (0, 0, self.width, HUD_H))
+        self.screen.blit(self.f_mid.render(f"分数  {self.score}", True, TEXT), (self.board_x, 15))
         tcol = (255, 110, 110) if self.time_left < 30 else TEXT
         tm = self.f_mid.render(f"时间  {int(self.time_left):03d}s", True, tcol)
-        self.screen.blit(tm, tm.get_rect(midtop=(WIDTH // 2, row1_y)))
-        self.screen.blit(self.f_mid.render(f"剩余  {self.remaining()}", True, TEXT), (WIDTH - MARGIN - 80, row1_y))
+        self.screen.blit(tm, tm.get_rect(topright=(self.width - self.board_x, 15)))
 
         mouse_pos = pygame.mouse.get_pos()
         for btn in self.buttons: btn.draw(self.screen, self.f_btn, mouse_pos)
@@ -468,43 +430,33 @@ class LinkGame:
             box = pygame.Surface((surf.get_width() + 30, surf.get_height() + 20), pygame.SRCALPHA)
             pygame.draw.rect(box, (*ACCENT, 235), box.get_rect(), border_radius=12)
             box.blit(surf, surf.get_rect(center=box.get_rect().center))
-            self.screen.blit(box, box.get_rect(center=(WIDTH // 2, BOARD_Y + BOARD_H // 2)))
+            self.screen.blit(box, box.get_rect(center=(self.width // 2, self.board_y + self.board_h // 2)))
 
         if self.state != "playing":
-            veil = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
             veil.fill((10, 12, 20, 180))
             self.screen.blit(veil, (0, 0))
             title = "恭喜通关！" if self.state == "won" else "时间到，游戏结束"
             t = load_font(40, True).render(title, True, (110, 240, 180) if self.state == "won" else (255, 130, 130))
-            self.screen.blit(t, t.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 40)))
-            s = self.f_mid.render(f"最终得分:{self.score}", True, TEXT)
-            self.screen.blit(s, s.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 10)))
+            self.screen.blit(t, t.get_rect(center=(self.width // 2, self.height // 2 - 40)))
+            s = self.f_mid.render(f"最终得分：{self.score}", True, TEXT)
+            self.screen.blit(s, s.get_rect(center=(self.width // 2, self.height // 2 + 10)))
             r = self.f_small.render("点击任意位置重新开始", True, (180, 186, 205))
-            self.screen.blit(r, r.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 50)))
+            self.screen.blit(r, r.get_rect(center=(self.width // 2, self.height // 2 + 50)))
 
-    # ==================== 异步主循环 ====================
     async def run(self):
-
-        # 确保在进入游戏主循环前，先让浏览器喘口气，让文件系统完全加载完
-        await asyncio.sleep(0.1)
-
         running = True
         while running:
             dt = self.clock.tick(FPS) / 1000.0
-
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                    # ✅ 只需要这一个，Pygbag 会自动把手机触摸转成鼠标点击
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     self._handle_click(event.pos)
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         running = False
-
             self.update(dt)
             self.draw()
             pygame.display.flip()
-
-            # 必须的异步让步
             await asyncio.sleep(0)
