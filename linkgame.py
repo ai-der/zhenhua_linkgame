@@ -13,12 +13,12 @@ DIFFICULTIES = {
     "hard": (10, 10, 72, 180)
 }
 
-# 固定大画布，适应所有难度
+# 宽屏画布，完美适配手机横屏
 WIDTH = 1100
-HEIGHT = 1000
+HEIGHT = 900
+HUD_H = 90  # 顶部 HUD 高度固定，不再重叠
 
 MARGIN = 40
-HUD_H = 180  # 增加顶部高度，防止拥挤
 FPS = 60
 
 BG = (26, 30, 42)
@@ -33,7 +33,6 @@ PALETTE = [
     (239, 71, 111), (255, 193, 7), (6, 214, 160), (17, 138, 178),
     (131, 56, 236), (255, 140, 66), (0, 187, 249), (247, 37, 133),
 ]
-LETTERS = "ABCDEFGHIJKLMNOP"
 DIRS = ((-1, 0), (1, 0), (0, -1), (0, 1))
 
 
@@ -49,11 +48,9 @@ def find_path(grid, rows, cols, a, b):
     INF = 99
     best = [[[INF] * 4 for _ in range(W)] for _ in range(H)]
     parent = {}
-
     start = (a[0], a[1], -1)
     parent[start] = None
     dq = deque([(a[0], a[1], -1, 0)])
-
     while dq:
         r, c, d, turns = dq.popleft()
         for nd, (dr, dc) in enumerate(DIRS):
@@ -119,11 +116,12 @@ class LinkGame:
             Button("重排", "reshuffle", BTN_COLORS[0]),
             Button("提示", "hint", BTN_COLORS[1]),
             Button("新游戏", "new_game", BTN_COLORS[2]),
-            Button("返回菜单", "menu", (150, 150, 150)),
+            Button("返回菜单", "menu", (100, 100, 100)),
         ]
 
-        mw, mh = 350, 70
-        cx, cy = WIDTH // 2, HEIGHT // 2
+        # 主菜单按钮布局
+        mw, mh = 400, 80
+        cx, cy = WIDTH // 2, HEIGHT // 2 - 50
         self.menu_buttons[0].update_rect(cx - mw // 2, cy - 120, mw, mh)
         self.menu_buttons[1].update_rect(cx - mw // 2, cy - 20, mw, mh)
         self.menu_buttons[2].update_rect(cx - mw // 2, cy + 80, mw, mh)
@@ -134,21 +132,18 @@ class LinkGame:
 
     def load_images(self):
         self.tile_surfs = []
-        assets_dir = "assets"
         try:
-            files = sorted(
-                [f for f in os.listdir(assets_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))])
+            files = sorted([f for f in os.listdir("assets") if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))])
         except Exception:
             files = []
 
         for name in files:
-            path = os.path.join(assets_dir, name)
             try:
-                img = pygame.image.load(path).convert_alpha()
+                img = pygame.image.load(os.path.join("assets", name)).convert_alpha()
                 s = 200
                 surf = pygame.Surface((s, s), pygame.SRCALPHA)
-                color_idx = sum(ord(c) for c in name) % len(PALETTE)
-                pygame.draw.rect(surf, PALETTE[color_idx], (0, 0, s, s), border_radius=40)
+                pygame.draw.rect(surf, PALETTE[sum(ord(c) for c in name) % len(PALETTE)], (0, 0, s, s),
+                                 border_radius=40)
                 img_scaled = pygame.transform.smoothscale(img, (s - 16, s - 16))
                 layer = pygame.Surface((s, s), pygame.SRCALPHA)
                 layer.blit(img_scaled, (8, 8))
@@ -172,51 +167,19 @@ class LinkGame:
         self.board_w = self.cols * self.tile_size
         self.board_h = self.rows * self.tile_size
 
+        # 棋盘在画布中居中
         self.board_x = (WIDTH - self.board_w) // 2
-        self.board_y = HUD_H + 40  # 棋盘下移，留出空间
+        self.board_y = HUD_H + (HEIGHT - HUD_H - self.board_h) // 2
 
-        self.f_mid = load_font(int(self.tile_size * 0.4), bold=True)
-        self.f_btn = load_font(int(self.tile_size * 0.25), bold=True)
+        self.f_mid = load_font(32, bold=True)
+        self.f_btn = load_font(24, bold=True)
 
-        # 按钮布局：左侧难度，右侧操作
-        bw = 100
-        bh = 36
-        # 第一排（难度）
-        self.buttons[0].update_rect(self.board_x, 15, bw, bh)
-        self.buttons[1].update_rect(self.board_x + bw + 15, 15, bw, bh)
-        self.buttons[2].update_rect(self.board_x + (bw + 15) * 2, 15, bw, bh)
-        # 第一排右侧（返回菜单）
-        self.buttons[3].update_rect(self.board_x + self.board_w - bw, 15, bw, bh)
-
-        # 第二排（操作） - 居中放置
-        start_x = self.board_x + self.board_w // 2 - (bw * 3 + 30) // 2
-        self.buttons[0].update_rect(start_x, 65, bw, bh)  # 借用按钮0位置放重排？不，我们重写布局
-        # 其实为了简单，直接在 draw 里画两排，这里更新 rect 即可
-
-        # 第二排：重排、提示、新游戏
-        self.buttons[0].update_rect(self.board_x, 65, bw, bh)
-        self.buttons[1].update_rect(self.board_x + bw + 15, 65, bw, bh)
-        self.buttons[2].update_rect(self.board_x + (bw + 15) * 2, 65, bw, bh)
-        self.buttons[3].update_rect(self.board_x + self.board_w - bw, 65, bw, bh)  # 返回菜单
-
-        # 调整一下按钮文本：第一排是难度，第二排是操作。我们在 draw 里自己画文字，这里用 dummy 按钮做检测
-        # 为了兼容点击检测，我们用 menu_buttons 作为第二排，buttons作为第一排？
-        # 不，太乱了。我们重新定义：
-        # 第一排：难度按钮 (menu_buttons)
-        self.menu_buttons[0].update_rect(self.board_x, 15, bw, bh)
-        self.menu_buttons[1].update_rect(self.board_x + bw + 15, 15, bw, bh)
-        self.menu_buttons[2].update_rect(self.board_x + (bw + 15) * 2, 15, bw, bh)
-
-        # 第二排：操作按钮 (buttons)
-        self.buttons[0].update_rect(self.board_x, 65, bw, bh)  # 重排
-        self.buttons[1].update_rect(self.board_x + bw + 15, 65, bw, bh)  # 提示
-        self.buttons[2].update_rect(self.board_x + (bw + 15) * 2, 65, bw, bh)  # 新游戏
-        self.buttons[3].update_rect(self.board_x + self.board_w - bw, 65, bw, bh)  # 返回菜单
-
-        # 修改难度按钮文字
-        self.menu_buttons[0].text = "简单"
-        self.menu_buttons[1].text = "普通"
-        self.menu_buttons[2].text = "困难"
+        # 顶部操作按钮布局（靠右）
+        bw, bh = 100, 40
+        self.buttons[3].update_rect(self.board_x + self.board_w - bw, 25, bw, bh)  # 返回
+        self.buttons[2].update_rect(self.board_x + self.board_w - bw * 2 - 15, 25, bw, bh)  # 新游戏
+        self.buttons[1].update_rect(self.board_x + self.board_w - bw * 3 - 30, 25, bw, bh)  # 提示
+        self.buttons[0].update_rect(self.board_x + self.board_w - bw * 4 - 45, 25, bw, bh)  # 重排
 
         self.new_game()
 
@@ -233,9 +196,8 @@ class LinkGame:
     def new_game(self):
         self.grid = [[-1] * (self.cols + 2) for _ in range(self.rows + 2)]
         pool = []
-        kinds = len(self.tile_surfs)
         for i in range((self.rows * self.cols) // 2):
-            k = i % kinds
+            k = i % len(self.tile_surfs)
             pool.extend((k, k))
         random.shuffle(pool)
 
@@ -320,11 +282,8 @@ class LinkGame:
 
     def _handle_click(self, pos):
         import time
-        curr_t = time.time()
-        # 将防抖时间缩短到 0.1s，避免手机连点吞事件
-        if curr_t - self._last_click < 0.1:
-            return
-        self._last_click = curr_t
+        if time.time() - self._last_click < 0.1: return
+        self._last_click = time.time()
 
         if self.state == "menu":
             for btn in self.menu_buttons:
@@ -333,10 +292,6 @@ class LinkGame:
                     return
             return
 
-        if self.state not in ["playing", "won", "lost"]:
-            return
-
-        # 检查游戏内按钮
         for btn in self.buttons:
             if btn.enabled and btn.rect.collidepoint(pos):
                 if btn.action == "menu":
@@ -349,14 +304,7 @@ class LinkGame:
                     self.show_hint()
                 return
 
-        # 检查顶部难度切换按钮（仅在游戏中允许随时切难度）
-        for btn in self.menu_buttons:
-            if btn.rect.collidepoint(pos):
-                self.set_difficulty(btn.action)
-                return
-
-        if self.state != "playing":
-            return
+        if self.state != "playing": return
 
         if not (self.board_x <= pos[0] < self.board_x + self.board_w and self.board_y <= pos[
             1] < self.board_y + self.board_h):
@@ -404,17 +352,19 @@ class LinkGame:
 
     def draw(self):
         self.screen.fill(BG)
+
         if self.state == "menu":
-            title = load_font(72, True).render("振华连连看", True, ACCENT)
-            self.screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 3)))
+            title = load_font(80, True).render("振华连连看", True, ACCENT)
+            self.screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 3 - 50)))
             sub = load_font(32).render("请选择难度开始游戏", True, TEXT)
-            self.screen.blit(sub, sub.get_rect(center=(WIDTH // 2, HEIGHT // 3 + 70)))
+            self.screen.blit(sub, sub.get_rect(center=(WIDTH // 2, HEIGHT // 3 + 20)))
             mouse_pos = pygame.mouse.get_pos()
-            btn_font = load_font(36, True)
+            btn_font = load_font(32, True)
             for btn in self.menu_buttons:
                 btn.draw(self.screen, btn_font, mouse_pos)
             return
 
+        # --- 游戏界面 ---
         pygame.draw.rect(self.screen, PANEL,
                          (self.board_x - 10, self.board_y - 10, self.board_w + 20, self.board_h + 20), border_radius=20)
         for r in range(1, self.rows + 1):
@@ -423,6 +373,7 @@ class LinkGame:
                     pygame.draw.rect(self.screen, GRID_LINE, (
                     self.board_x + (c - 1) * self.tile_size, self.board_y + (r - 1) * self.tile_size, self.tile_size,
                     self.tile_size))
+
         for r in range(1, self.rows + 1):
             for c in range(1, self.cols + 1):
                 k = self.grid[r][c]
@@ -430,11 +381,13 @@ class LinkGame:
                     scaled = pygame.transform.smoothscale(self.tile_surfs[k], (self.tile_size - 6, self.tile_size - 6))
                     self.screen.blit(scaled, (
                     self.board_x + (c - 1) * self.tile_size + 3, self.board_y + (r - 1) * self.tile_size + 3))
+
         if self.selected:
             r, c = self.selected
             x, y = self.board_x + (c - 1) * self.tile_size + 3, self.board_y + (r - 1) * self.tile_size + 3
             pygame.draw.rect(self.screen, ACCENT, (x - 2, y - 2, self.tile_size - 2, self.tile_size - 2), 3,
                              border_radius=12)
+
         if self.hint:
             for (r, c) in self.hint:
                 x, y = self.board_x + (c - 1) * self.tile_size + 3, self.board_y + (r - 1) * self.tile_size + 3
@@ -443,6 +396,7 @@ class LinkGame:
             if self.hint_path:
                 pts = [self.cell_center(r, c) for r, c in self.hint_path]
                 if len(pts) >= 2: pygame.draw.lines(self.screen, HINT_COLOR, False, pts, 3)
+
         for e in self.effects:
             p = min(1.0, e["t"] / e["life"])
             if e["type"] == "pop":
@@ -456,18 +410,19 @@ class LinkGame:
                 pts = [self.cell_center(r, c) for r, c in e["path"]]
                 if len(pts) >= 2: pygame.draw.lines(self.screen, (*ACCENT, int(255 * (1 - p))), False, pts, 4)
 
-        # 顶部 HUD 背景
+        # --- HUD 绘制 ---
         pygame.draw.rect(self.screen, (34, 39, 54), (0, 0, WIDTH, HUD_H))
-        # 分数和时间
-        self.screen.blit(load_font(36, True).render(f"分数  {self.score}", True, TEXT),
-                         (self.board_x, 65))  # 移位，避免和按钮冲突
-        tcol = (255, 110, 110) if self.time_left < 30 else TEXT
-        tm = load_font(36, True).render(f"时间  {int(self.time_left):03d}s", True, tcol)
-        self.screen.blit(tm, tm.get_rect(topright=(self.board_x + self.board_w, 65)))
 
+        # 左侧文字状态
+        self.screen.blit(self.f_mid.render(f"分数  {self.score}", True, TEXT), (self.board_x, 30))
+        self.screen.blit(self.f_mid.render(f"剩余  {self.remaining()}", True, TEXT), (self.board_x + 180, 30))
+        tcol = (255, 110, 110) if self.time_left < 30 else TEXT
+        self.screen.blit(self.f_mid.render(f"时间  {int(self.time_left):03d}s", True, tcol), (self.board_x + 360, 30))
+
+        # 右侧按钮
         mouse_pos = pygame.mouse.get_pos()
-        for btn in self.menu_buttons: btn.draw(self.screen, self.f_btn, mouse_pos)
-        for btn in self.buttons: btn.draw(self.screen, self.f_btn, mouse_pos)
+        for btn in self.buttons:
+            btn.draw(self.screen, self.f_btn, mouse_pos)
 
         if self.message_timer > 0:
             surf = self.f_mid.render(self.message, True, (25, 25, 35))
@@ -493,10 +448,8 @@ class LinkGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                # 电脑端鼠标点击
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     self._handle_click(event.pos)
-                # 手机端原生触摸（映射坐标）
                 elif event.type == pygame.FINGERDOWN:
                     x = int(event.x * WIDTH)
                     y = int(event.y * HEIGHT)
