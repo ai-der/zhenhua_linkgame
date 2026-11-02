@@ -6,37 +6,16 @@ import asyncio
 from collections import deque
 import pygame
 
-# ==================== 动态画布尺寸 ====================
-WIDTH = 1100
-HEIGHT = 900
-
-# 如果是网页端（手机/电脑浏览器），根据屏幕比例动态计算，铺满屏幕
-if sys.platform == "emscripten":
-    try:
-        import platform
-
-        sw = platform.window.innerWidth
-        sh = platform.window.innerHeight
-
-        # 保证宽度的基准为 1000（足够放下 8x8 的棋盘）
-        if sh > sw:
-            # 竖屏模式（如 9:16）
-            WIDTH = 1000
-            HEIGHT = int(1000 * sh / sw)
-        else:
-            # 横屏模式（如 16:9）
-            HEIGHT = 900
-            WIDTH = int(900 * sw / sh)
-    except Exception:
-        pass
-
-HUD_H = 140  # 稍微加高一点 HUD
 # ==================== 全局配置 ====================
 DIFFICULTIES = {
     "easy": (6, 6, 110, 300, "简单"),
     "normal": (8, 8, 90, 240, "普通"),
     "hard": (10, 10, 72, 180, "困难")
 }
+# 固定标准宽屏比例
+WIDTH = 1280
+HEIGHT = 800
+HUD_H = 140
 
 MARGIN = 40
 FPS = 60
@@ -121,7 +100,8 @@ class LinkGame:
     def __init__(self):
         pygame.init()
         self.clock = pygame.time.Clock()
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        # 加上 SCALED 标志，自动处理缩放和触摸映射
+        self.screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED | pygame.RESIZABLE)
 
         # 加载背景图并调暗 (消除过亮感)
         self.bg_surf = None
