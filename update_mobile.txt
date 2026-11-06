@@ -1,0 +1,100 @@
+# ============ 手机端打包推流脚本 ============
+Write-Host "1. 正在清理旧文件..." -ForegroundColor Cyan
+Remove-Item -Recurse -Force mobile\build, docs -ErrorAction SilentlyContinue
+
+Write-Host "2. 正在把共用资源搬运到 mobile..." -ForegroundColor Cyan
+Copy-Item -Path "assets" -Destination "mobile\" -Recurse -Force
+Copy-Item -Path "font.otf" -Destination "mobile\" -Force
+
+Write-Host "3. 正在打包【手机端】..." -ForegroundColor Cyan
+$env:PYTHONUTF8="1"
+$job = Start-Job -ScriptBlock {
+    $env:PYTHONUTF8="1"
+    Set-Location "$using:PWD\mobile"
+    python -m pygbag --build --ume_block 0 main.py
+}
+$job | Wait-Job -Timeout 15 | Out-Null
+if ($job.State -eq 'Running') { Stop-Job $job }
+Remove-Job $job -Force
+
+Write-Host "4. 正在清理临时搬运的资源..." -ForegroundColor Cyan
+Remove-Item -Recurse -Force mobile\assets -ErrorAction SilentlyContinue
+Remove-Item -Force mobile\font.otf -ErrorAction SilentlyContinue
+
+Write-Host "5. 正在组装 docs 目录..." -ForegroundColor Cyan
+New-Item -ItemType Directory -Path docs -Force | Out-Null
+if (Test-Path mobile\build\web) {
+    Copy-Item -Path mobile\build\web\* -Destination docs -Recurse -Force
+}
+
+# 强制重命名核心包
+$tar_file = Get-ChildItem -Path docs -Filter "*.tar.gz" | Select-Object -First 1
+if ($tar_file -and $tar_file.Name -ne "main.tar.gz") {
+    Rename-Item -Path $tar_file.FullName -NewName "main.tar.gz" -Force
+    Write-Host "✅ 已将核心包重命名为 main.tar.gz" -ForegroundColor Green
+}
+
+# 补全 browserfs.min.js
+$old_bfs = "F:\py_project\pythonProject\lianliankan\docs\browserfs.min.js"
+if (Test-Path $old_bfs) { Copy-Item $old_bfs -Destination docs\ -Force }
+
+# 写入手机端专属 HTML (全屏拉伸)
+$html_content = @"
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <link rel="icon" href="data:,">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>振华连连看 - 手机版</title>
+    <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #1a1e2a; }
+        canvas { display: block; width: 100vw !important; height: 100vh !important; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; touch-action: none; }
+        #pyconsole, #terminal, #status, #progress, #infobox, #transfer, #system { display: none !important; }
+    </style>
+    <script src="browserfs.min.js"></script>
+</head>
+<body>
+    <script type="application/javascript">config = { cdn: "https://pygame-web.github.io/cdn/0.9.3/", archive: "main", _sdl2: "canvas", gui_divider: 2, ume_block: 0, can_close: 0, autorun: 0, PYBUILD: "3.12" }</script>
+    <script src="https://pygame-web.github.io/cdn/0.9.3/pythons.js" type="module" id="site" data-os="vtx,gui" data-cdn="https://pygame-web.github.io/cdn/0.9.3/" async defer>
+#<!--
+import asyncio, platform, tarfile
+from pathlib import Path
+async def custom_site():
+    platform.document.body.style.background = "#1a1e2a"
+    platform.window.transfer.hidden = true
+    platform.window.canvas.style.visibility = "visible"
+    bundle = "main"
+    appdir = Path(f"/data/data/{bundle}")
+    appdir.mkdir(exist_ok=True)
+    async with platform.fopen(f"{bundle}.tar.gz", "rb") as archive:
+        tar = tarfile.open(fileobj=archive, mode="r:gz")
+        tar.extractall(path=appdir.as_posix(), filter='tar')
+        tar.close()
+    platform.run_main(PyConfig, loaderhome= appdir / "assets", loadermain=None)
+    import embed
+    while embed.counter()<0: await asyncio.sleep(.1)
+    main = appdir / "assets" / "main.py"
+    if not platform.window.MM.UME:
+        while not platform.window.MM.UME: await asyncio.sleep(.1)
+    await TopLevel_async_handler.start_toplevel(platform.shell, console=False)
+    __import__(__name__).__file__ = main
+    await shell.source(main)
+    platform.window.infobox.style.display = "none"
+    platform.window.window_resize()
+    shell.interactive()
+asyncio.run(custom_site())
+# --></script>
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex=1></canvas>
+    <div id="infobox" style="display:none;">Loading...</div>
+</body>
+</html>
+"@
+Set-Content -Path docs\index.html -Value $html_content -Encoding UTF8
+New-Item -ItemType File -Path docs\.nojekyll -Force | Out-Null
+
+Write-Host "6. 正在推送到 GitHub (手机端)..." -ForegroundColor Cyan
+git add docs/
+git commit -m "Auto-deploy: 手机端网页版"
+git push -f origin main
+Write-Host "🎉 手机端部署完成！" -ForegroundColor Magenta
